@@ -1,4 +1,11 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Control Panel</title>
 <style>
+    /* Overlay */
     .popup-overlay {
         position: fixed;
         top: 0;
@@ -6,50 +13,80 @@
         width: 100%;
         height: 100%;
         background-color: rgba(0, 0, 0, 0.6);
-        display: none; 
+        display: flex; /* only visible when added */
         justify-content: center;
         align-items: center;
         z-index: 9999;
         backdrop-filter: blur(5px);
     }
+
+    /* Popup content */
     .popup-content {
         background-color: white;
-        padding: 40px;
+        padding: 30px 40px;
         border-radius: 12px;
         box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
         text-align: center;
-        max-width: 400px;
+        max-width: 450px;
         width: 90%;
         transform: scale(0.95);
         animation: popup-appear 0.3s ease-out forwards;
     }
+
     @keyframes popup-appear {
-        from {
-            opacity: 0;
-            transform: scale(0.9);
-        }
-        to {
-            opacity: 1;
-            transform: scale(1);
-        }
+        from { opacity: 0; transform: scale(0.9); }
+        to { opacity: 1; transform: scale(1); }
     }
+
     .popup-content h2 {
         margin-top: 0;
         font-size: 1.8rem;
         font-weight: 700;
         color: #333;
     }
+
     .popup-content p {
         color: #555;
         font-size: 1.1rem;
+        margin: 10px 0;
+    }
+
+    .popup-content .contact {
+        font-weight: 600;
+        color: #111;
     }
 </style>
+</head>
+<body>
 
-<div id="persistent-popup" class="popup-overlay">
-   <div class="popup-content">
-    <h2>⚠ Important Warning</h2>
-    <p>You have not completed the required payment. Please contact the developer immediately to complete it. Failure to do so may result in permanent data deletion within 24 hours.</p>
-    <p class="contact">Contact: +91-XXXXXXXXXX</p>
-</div>
+<!-- Your page content here -->
 
-</div>
+<script>
+/**
+ * Call this function to show the popup.
+ * You can trigger it only from admin panel.
+ */
+function showPersistentPopup() {
+    // Prevent duplicate popup
+    if (document.getElementById("persistent-popup")) return;
+
+    // Create overlay
+    const overlay = document.createElement("div");
+    overlay.id = "persistent-popup";
+    overlay.className = "popup-overlay";
+
+    // Add popup content
+    overlay.innerHTML = `
+        <div class="popup-content">
+            <h2>⚠ Important Warning</h2>
+            <p>You have not completed the required payment. Please contact the developer immediately to complete it. Failure to do so may result in permanent data deletion within 24 hours.</p>
+            <p class="contact">Contact: +91-XXXXXXXXXX</p>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+}
+</script>
+
+</body>
+</html>

