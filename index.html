@@ -588,24 +588,24 @@
               </div>
             </div>
             <div class="form-row">
-                <div class="form-group">
-                    <label for="new-loan-start-date">First Collection Date</label>
-                    <input
-                        type="date"
-                        id="new-loan-start-date"
-                        class="form-control"
-                        required
-                    />
-                </div>
-                <div class="form-group">
-                    <label for="new-loan-end-date">Loan End Date</label>
-                    <input
-                        type="date"
-                        id="new-loan-end-date"
-                        class="form-control"
-                        required
-                    />
-                </div>
+              <div class="form-group">
+                <label for="new-loan-start-date">First Collection Date</label>
+                <input
+                  type="date"
+                  id="new-loan-start-date"
+                  class="form-control"
+                  required
+                />
+              </div>
+              <div class="form-group">
+                <label for="new-loan-end-date">Loan End Date</label>
+                <input
+                  type="date"
+                  id="new-loan-end-date"
+                  class="form-control"
+                  required
+                />
+              </div>
             </div>
             <div
               id="new-loan-installment-preview"
@@ -703,10 +703,11 @@
 
     <div id="toast-container"></div>
 
+    <!-- UPDATED: Script loading order fixed -->
+    <script src="script.js"></script>
     <script src="excel.js"></script>
     <script src="graph.js"></script>
     <script src="pdf-generator.js"></script>
-    <script src="script.js"></script>
     <script src="theme-switcher.js"></script>
   </body>
 </html>

@@ -5,9 +5,6 @@ Proprietary and Confidential – Unauthorized copying, modification, or distribu
 via any medium, is strictly prohibited without prior written consent from Avdesh Jadon.
 */
 
-// NOTE: The 'calculateConceptualTotalInterest' function is now removed from this file.
-// It will use the one already available from script.js, fixing the error.
-
 async function generateAndDownloadPDF(customerId) {
   const customer = [
     ...window.allCustomers.active,
@@ -31,12 +28,17 @@ async function generateAndDownloadPDF(customerId) {
   }
 
   const { loanDetails, paymentSchedule, name } = customer;
-  const formatCurrency = (amount) =>
-    `Rs. ${Math.round(Number(amount || 0)).toLocaleString("en-IN")}`;
+  
+  const formatCurrencyPDF = (amount) => {
+      const value = Number(amount || 0);
+      return `Rs. ${value.toLocaleString("en-IN", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+      })}`;
+  };
 
   const totalPaid = paymentSchedule.reduce((sum, p) => sum + p.amountPaid, 0);
 
-  // UPDATED: Now correctly uses the function from script.js without redeclaring it
   const totalInterestPayable = calculateConceptualTotalInterest(
     loanDetails.principal,
     loanDetails.interestRate,
@@ -98,7 +100,7 @@ async function generateAndDownloadPDF(customerId) {
 
   const rowHeight = 18;
   const headerHeight = 40;
-  const leftContentHeight = headerHeight + 6 * rowHeight;
+  const leftContentHeight = headerHeight + 7 * rowHeight;
   const rightContentHeight = headerHeight + 3 * rowHeight;
   const boxHeight = Math.max(leftContentHeight, rightContentHeight) + 15;
 
@@ -135,10 +137,12 @@ async function generateAndDownloadPDF(customerId) {
   doc.text("Customer & Loan Details", leftBoxX + 15, leftY);
   leftY += 15;
   leftY = drawDetailRow("Customer Name:", name, leftBoxX, leftY);
-  leftY = drawDetailRow("Loan Date:", loanDetails.loanDate, leftBoxX, leftY);
+  // UPDATED: Added Loan Given Date to PDF
+  leftY = drawDetailRow("Loan Given Date:", loanDetails.loanGivenDate || "N/A", leftBoxX, leftY);
+  leftY = drawDetailRow("First Collection:", loanDetails.firstCollectionDate, leftBoxX, leftY);
   leftY = drawDetailRow(
     "Principal Amount:",
-    formatCurrency(loanDetails.principal),
+    formatCurrencyPDF(loanDetails.principal),
     leftBoxX,
     leftY
   );
@@ -156,7 +160,7 @@ async function generateAndDownloadPDF(customerId) {
   );
   leftY = drawDetailRow(
     "Total Repayable:",
-    formatCurrency(totalRepayable),
+    formatCurrencyPDF(totalRepayable),
     leftBoxX,
     leftY
   );
@@ -169,19 +173,19 @@ async function generateAndDownloadPDF(customerId) {
   rightY += 15;
   rightY = drawDetailRow(
     "Total Amount Paid:",
-    formatCurrency(totalPaid),
+    formatCurrencyPDF(totalPaid),
     rightBoxX,
     rightY
   );
   rightY = drawDetailRow(
     "Outstanding Balance:",
-    formatCurrency(outstanding),
+    formatCurrencyPDF(outstanding),
     rightBoxX,
     rightY
   );
   rightY = drawDetailRow(
     "Total Interest:",
-    formatCurrency(totalInterestPayable),
+    formatCurrencyPDF(totalInterestPayable),
     rightBoxX,
     rightY
   );
@@ -201,9 +205,9 @@ async function generateAndDownloadPDF(customerId) {
   const tableBody = paymentSchedule.map((inst) => [
     inst.installment,
     inst.dueDate,
-    formatCurrency(inst.amountDue),
-    formatCurrency(inst.amountPaid),
-    formatCurrency(inst.pendingAmount),
+    formatCurrencyPDF(inst.amountDue),
+    formatCurrencyPDF(inst.amountPaid),
+    formatCurrencyPDF(inst.pendingAmount),
     inst.status,
   ]);
 
