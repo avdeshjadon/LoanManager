@@ -310,6 +310,33 @@
                   </div>
                 </div>
               </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="customer-aadhar-number">Aadhar Card Number</label>
+                  <input
+                    type="text"
+                    id="customer-aadhar-number"
+                    class="form-control"
+                    placeholder="XXXX XXXX XXXX"
+                    pattern="\d{12}"
+                    title="Enter a 12-digit Aadhar number"
+                    maxlength="12"
+                  />
+                </div>
+                <div class="form-group">
+                  <label for="customer-pan-number">PAN Card Number</label>
+                  <input
+                    type="text"
+                    id="customer-pan-number"
+                    class="form-control"
+                    placeholder="ABCDE1234F"
+                    pattern="[A-Z]{5}[0-9]{4}[A-Z]{1}"
+                    title="Enter a valid 10-character PAN number"
+                    maxlength="10"
+                  />
+                </div>
+              </div>
               <div class="form-row">
                 <div class="form-group">
                   <label for="customer-pic-file">Client's Picture</label>
@@ -560,14 +587,25 @@
                 </select>
               </div>
             </div>
-            <div class="form-group">
-              <label for="new-loan-end-date">New Loan End Date</label>
-              <input
-                type="date"
-                id="new-loan-end-date"
-                class="form-control"
-                required
-              />
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="new-loan-start-date">First Collection Date</label>
+                    <input
+                        type="date"
+                        id="new-loan-start-date"
+                        class="form-control"
+                        required
+                    />
+                </div>
+                <div class="form-group">
+                    <label for="new-loan-end-date">Loan End Date</label>
+                    <input
+                        type="date"
+                        id="new-loan-end-date"
+                        class="form-control"
+                        required
+                    />
+                </div>
             </div>
             <div
               id="new-loan-installment-preview"

@@ -1,3 +1,13 @@
+/*
+Copyright (c) 2025 Avdesh Jadon (LoanManager)
+All Rights Reserved.
+Proprietary and Confidential – Unauthorized copying, modification, or distribution of this file,
+via any medium, is strictly prohibited without prior written consent from Avdesh Jadon.
+*/
+
+// NOTE: The 'calculateConceptualTotalInterest' function is now removed from this file.
+// It will use the one already available from script.js, fixing the error.
+
 async function generateAndDownloadPDF(customerId) {
   const customer = [
     ...window.allCustomers.active,
@@ -26,7 +36,13 @@ async function generateAndDownloadPDF(customerId) {
 
   const totalPaid = paymentSchedule.reduce((sum, p) => sum + p.amountPaid, 0);
 
-  const totalInterestPayable = calculateTotalInterest(loanDetails);
+  // UPDATED: Now correctly uses the function from script.js without redeclaring it
+  const totalInterestPayable = calculateConceptualTotalInterest(
+    loanDetails.principal,
+    loanDetails.interestRate,
+    loanDetails.firstCollectionDate,
+    loanDetails.loanEndDate
+  );
   const totalRepayable = loanDetails.principal + totalInterestPayable;
   const outstanding = totalRepayable - totalPaid;
 
@@ -44,11 +60,11 @@ async function generateAndDownloadPDF(customerId) {
   const borderColor = "#e2e8f0";
   const backgroundColor = "#f8fafc";
 
-  const paidBgColor = "#dcfce7"; // Paid: Fresh, light green background
-  const paidTextColor = "#166534"; // Paid: Dark, rich green text
-  const pendingBgColor = "#fef3c7"; // Pending: Warning-type yellow background
-  const pendingTextColor = "#92400e"; // Pending: Dark amber text
-  const dueTextColor = "#b91c1c"; // Due: Normal background, but bold red text
+  const paidBgColor = "#dcfce7";
+  const paidTextColor = "#166534";
+  const pendingBgColor = "#fef3c7";
+  const pendingTextColor = "#92400e";
+  const dueTextColor = "#b91c1c";
 
   doc.setFont("helvetica", "normal");
 
@@ -128,19 +144,19 @@ async function generateAndDownloadPDF(customerId) {
   );
   leftY = drawDetailRow(
     "Interest Rate:",
-    `${loanDetails.interestRate}%`,
+    `${loanDetails.interestRate}% Monthly`,
     leftBoxX,
     leftY
   );
   leftY = drawDetailRow(
     "Tenure:",
-    `${loanDetails.installments} installments`,
+    `${loanDetails.installments} ${loanDetails.frequency} installments`,
     leftBoxX,
     leftY
   );
   leftY = drawDetailRow(
-    "Installment Amount:",
-    formatCurrency(paymentSchedule[0].amountDue),
+    "Total Repayable:",
+    formatCurrency(totalRepayable),
     leftBoxX,
     leftY
   );
@@ -191,7 +207,7 @@ async function generateAndDownloadPDF(customerId) {
     inst.status,
   ]);
 
-  // --- Table Generation with Fixed Styling Logic ---
+  // --- Table Generation ---
   doc.autoTable({
     head: tableHead,
     body: tableBody,
@@ -218,14 +234,12 @@ async function generateAndDownloadPDF(customerId) {
       if (data.row.section === "body") {
         const status = data.row.raw[5];
 
-        // Apply background color to every cell in the row based on status
         if (status === "Paid") {
           data.cell.styles.fillColor = paidBgColor;
         } else if (status === "Pending") {
           data.cell.styles.fillColor = pendingBgColor;
         }
 
-        // Apply specific text styling JUST for the status column
         if (data.column.dataKey === 5) {
           data.cell.styles.fontStyle = "bold";
           if (status === "Paid") {

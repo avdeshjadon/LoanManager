@@ -14,27 +14,31 @@ const storage = firebase.storage();
 
 window.allCustomers = { active: [], settled: [] };
 
-const calculateTotalInterest = (loanDetails) => {
-  if (!loanDetails) return 0;
-  const { principal, interestRate, installments, frequency } = loanDetails;
-  const monthlyRateDecimal = interestRate / 100;
+// NEW: Calculates total interest based on conceptual months, not raw days.
+const calculateConceptualTotalInterest = (
+  principal,
+  monthlyRate,
+  firstDateStr,
+  endDateStr
+) => {
+  if (!principal || !monthlyRate || !firstDateStr || !endDateStr) return 0;
 
-  let totalInterest;
-  switch (frequency) {
-    case "monthly":
-      totalInterest = principal * monthlyRateDecimal * installments;
-      break;
-    case "weekly":
-      const weeklyRate = monthlyRateDecimal / 4;
-      totalInterest = principal * weeklyRate * installments;
-      break;
-    case "daily":
-      const dailyRate = monthlyRateDecimal / 30;
-      totalInterest = principal * dailyRate * installments;
-      break;
-    default:
-      totalInterest = 0;
+  const monthlyRateDecimal = monthlyRate / 100;
+
+  // Calculate the number of conceptual months between the start and end dates.
+  const d1 = new Date(firstDateStr);
+  const d2 = new Date(endDateStr);
+  let conceptualMonths = (d2.getFullYear() - d1.getFullYear()) * 12;
+  conceptualMonths -= d1.getMonth();
+  conceptualMonths += d2.getMonth();
+  if (d2.getDate() < d1.getDate()) {
+    conceptualMonths--;
   }
+
+  // Ensure at least one month of interest if the period is within a month boundary, as per user logic.
+  conceptualMonths = conceptualMonths <= 0 ? 1 : conceptualMonths;
+
+  const totalInterest = principal * monthlyRateDecimal * conceptualMonths;
   return totalInterest;
 };
 
@@ -61,9 +65,17 @@ const openWhatsApp = async (customer) => {
 
   const { loanDetails, paymentSchedule, name } = customer;
   const totalPaid = paymentSchedule.reduce((sum, p) => sum + p.amountPaid, 0);
-  const totalInterest = calculateTotalInterest(loanDetails);
+
+  // Use the same conceptual interest for displaying summary
+  const totalInterest = calculateConceptualTotalInterest(
+    loanDetails.principal,
+    loanDetails.interestRate,
+    loanDetails.firstCollectionDate,
+    loanDetails.loanEndDate
+  );
   const totalRepayable = loanDetails.principal + totalInterest;
   const outstanding = totalRepayable - totalPaid;
+
   const nextDue = paymentSchedule.find(
     (p) => p.status === "Due" || p.status === "Pending"
   );
@@ -96,7 +108,12 @@ window.processProfitData = (allCusts) => {
   today.setHours(23, 59, 59, 999);
   [...allCusts.active, ...allCusts.settled].forEach((customer) => {
     if (customer.loanDetails && customer.paymentSchedule) {
-      const totalInterest = calculateTotalInterest(customer.loanDetails);
+      const totalInterest = calculateConceptualTotalInterest(
+        customer.loanDetails.principal,
+        customer.loanDetails.interestRate,
+        customer.loanDetails.firstCollectionDate,
+        customer.loanDetails.loanEndDate
+      );
       const totalRepayable = customer.loanDetails.principal + totalInterest;
       if (totalRepayable === 0) return;
 
@@ -160,8 +177,9 @@ document.addEventListener("DOMContentLoaded", () => {
     startDate.setHours(0, 0, 0, 0);
     endDate.setHours(0, 0, 0, 0);
 
-    if (endDate <= startDate) {
-      throw new Error("End date must be after the start date.");
+    if (endDate < startDate) {
+      // Use < instead of <= to allow same-day loans for daily
+      throw new Error("End date must be on or after the start date.");
     }
 
     const diffTime = Math.abs(endDate - startDate);
@@ -171,42 +189,43 @@ document.addEventListener("DOMContentLoaded", () => {
       case "daily":
         return diffDays;
       case "weekly":
-        if (diffDays < 7) {
-          throw new Error(
-            "For weekly loans, the duration must be at least 7 days."
-          );
-        }
         return Math.ceil(diffDays / 7);
       case "monthly":
-        let months;
-        months = (endDate.getFullYear() - startDate.getFullYear()) * 12;
-        months -= startDate.getMonth();
-        months += endDate.getMonth();
-        if (endDate.getDate() < startDate.getDate()) {
+        let d1 = new Date(startDateStr);
+        let d2 = new Date(endDateStr);
+        let months = (d2.getFullYear() - d1.getFullYear()) * 12;
+        months -= d1.getMonth();
+        months += d2.getMonth();
+        if (d2.getDate() < d1.getDate()) {
           months--;
         }
-        if (months <= 0) {
-          throw new Error(
-            "For monthly loans, the duration must be at least one month."
-          );
-        }
-        return months + 1;
+        return months <= 0 ? 1 : months;
       default:
         throw new Error("Invalid frequency selected.");
     }
   };
 
-  const generateSimpleInterestSchedule = (p, r, n, startDate, frequency) => {
-    const totalInterest = calculateTotalInterest({
-      principal: p,
-      interestRate: r,
-      installments: n,
-      frequency: frequency,
-    });
-    const totalRepayable = p + totalInterest;
-    const installmentAmount = totalRepayable / n;
+  const generateSimpleInterestSchedule = (
+    principal,
+    interestRate,
+    n,
+    firstDate,
+    endDate,
+    frequency
+  ) => {
+    const totalInterest = calculateConceptualTotalInterest(
+      principal,
+      interestRate,
+      firstDate,
+      endDate
+    );
+    const totalRepayable = principal + totalInterest;
+
     const schedule = [];
-    let currentDate = new Date(startDate);
+    let currentDate = new Date(firstDate);
+    let cumulativeAmount = 0;
+
+    const standardInstallment = Math.round((totalRepayable / n) * 100) / 100;
 
     for (let i = 1; i <= n; i++) {
       let dueDate;
@@ -218,9 +237,19 @@ document.addEventListener("DOMContentLoaded", () => {
         } else if (frequency === "weekly") {
           currentDate.setDate(currentDate.getDate() + 7);
         } else if (frequency === "monthly") {
-          currentDate.setMonth(currentDate.getMonth() + 1);
+          const originalDate = new Date(firstDate);
+          originalDate.setMonth(originalDate.getMonth() + (i - 1));
+          currentDate = originalDate;
         }
         dueDate = new Date(currentDate);
+      }
+
+      let installmentAmount;
+      if (i < n) {
+        installmentAmount = standardInstallment;
+        cumulativeAmount += installmentAmount;
+      } else {
+        installmentAmount = totalRepayable - cumulativeAmount;
       }
 
       schedule.push({
@@ -272,21 +301,26 @@ document.addEventListener("DOMContentLoaded", () => {
   const calculateKeyStats = (activeLoans, settledLoans) => {
     let totalPrincipal = 0,
       totalOutstanding = 0,
-      totalInterest = 0;
+      totalInterestEarned = 0;
 
     [...activeLoans, ...settledLoans].forEach((c) => {
       if (c.loanDetails && c.paymentSchedule) {
         totalPrincipal += c.loanDetails.principal;
 
-        const loanTotalInterest = calculateTotalInterest(c.loanDetails);
-        const totalRepayable = c.loanDetails.principal + loanTotalInterest;
+        const totalInterest = calculateConceptualTotalInterest(
+          c.loanDetails.principal,
+          c.loanDetails.interestRate,
+          c.loanDetails.firstCollectionDate,
+          c.loanDetails.loanEndDate
+        );
+        const totalRepayable = c.loanDetails.principal + totalInterest;
         const totalPaid = c.paymentSchedule.reduce(
           (sum, p) => sum + p.amountPaid,
           0
         );
 
         const interestPaid = Math.max(0, totalPaid - c.loanDetails.principal);
-        totalInterest += interestPaid;
+        totalInterestEarned += interestPaid;
 
         if (c.status === "active") {
           totalOutstanding += totalRepayable - totalPaid;
@@ -299,7 +333,7 @@ document.addEventListener("DOMContentLoaded", () => {
       settledLoanCount: settledLoans.filter((c) => c.loanDetails).length,
       totalPrincipal,
       totalOutstanding,
-      totalInterest,
+      totalInterest: totalInterestEarned,
     };
   };
 
@@ -334,6 +368,15 @@ document.addEventListener("DOMContentLoaded", () => {
         id: doc.id,
         ...doc.data(),
       }));
+
+      allDocs.forEach((doc) => {
+        if (doc.loanDetails && !doc.loanDetails.loanEndDate) {
+          const schedule = doc.paymentSchedule;
+          if (schedule && schedule.length > 0) {
+            doc.loanDetails.loanEndDate = schedule[schedule.length - 1].dueDate;
+          }
+        }
+      });
 
       window.allCustomers.active = allDocs.filter((c) => c.status === "active");
       window.allCustomers.settled = allDocs.filter(
@@ -496,7 +539,12 @@ document.addEventListener("DOMContentLoaded", () => {
       )[0];
       const totalActiveLoans = loans.length;
       const totalOutstanding = loans.reduce((sum, loan) => {
-        const totalInterest = calculateTotalInterest(loan.loanDetails);
+        const totalInterest = calculateConceptualTotalInterest(
+          loan.loanDetails.principal,
+          loan.loanDetails.interestRate,
+          loan.loanDetails.firstCollectionDate,
+          loan.loanDetails.loanEndDate
+        );
         const totalRepayable = loan.loanDetails.principal + totalInterest;
         const totalPaid = loan.paymentSchedule.reduce(
           (s, p) => s + p.amountPaid,
@@ -717,7 +765,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const { paymentSchedule: schedule, loanDetails: details } = customer;
 
-    const totalInterest = calculateTotalInterest(details);
+    const totalInterest = calculateConceptualTotalInterest(
+      details.principal,
+      details.interestRate,
+      details.firstCollectionDate,
+      details.loanEndDate
+    );
     const totalPaid = schedule.reduce((sum, p) => sum + p.amountPaid, 0);
     const totalRepayable = details.principal + totalInterest;
     const remainingToCollect = totalRepayable - totalPaid;
@@ -877,12 +930,12 @@ document.addEventListener("DOMContentLoaded", () => {
       if (n <= 0) {
         throw new Error("Invalid date range for the selected frequency.");
       }
-      const totalInterest = calculateTotalInterest({
-        principal: p,
-        interestRate: r,
-        installments: n,
-        frequency: freq,
-      });
+      const totalInterest = calculateConceptualTotalInterest(
+        p,
+        r,
+        firstDate,
+        endDate
+      );
       const totalRepayable = p + totalInterest;
       const installmentAmount = totalRepayable / n;
 
@@ -902,10 +955,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const p = parseFloat(getEl("new-loan-principal").value);
     const r = parseFloat(getEl("new-loan-interest-rate").value);
     const freq = getEl("new-loan-frequency").value;
-    const firstDate = new Date().toISOString().split("T")[0]; // Today
+    const firstDate = getEl("new-loan-start-date").value;
     const endDate = getEl("new-loan-end-date").value;
 
-    if (!p || !r || !endDate) {
+    if (!p || !r || !firstDate || !endDate) {
       previewDiv.classList.add("hidden");
       return;
     }
@@ -915,12 +968,12 @@ document.addEventListener("DOMContentLoaded", () => {
       if (n <= 0) {
         throw new Error("Invalid date range for the selected frequency.");
       }
-      const totalInterest = calculateTotalInterest({
-        principal: p,
-        interestRate: r,
-        installments: n,
-        frequency: freq,
-      });
+      const totalInterest = calculateConceptualTotalInterest(
+        p,
+        r,
+        firstDate,
+        endDate
+      );
       const totalRepayable = p + totalInterest;
       const installmentAmount = totalRepayable / n;
 
@@ -933,6 +986,45 @@ document.addEventListener("DOMContentLoaded", () => {
       previewDiv.classList.add("error");
       previewDiv.classList.remove("hidden");
     }
+  }
+
+  function setAutomaticFirstDate() {
+    const freq = getEl("collection-frequency").value;
+    const firstDateInput = getEl("first-collection-date");
+    const today = new Date();
+
+    switch (freq) {
+      case "daily":
+        break;
+      case "weekly":
+        today.setDate(today.getDate() + 7);
+        break;
+      case "monthly":
+        today.setMonth(today.getMonth() + 1);
+        break;
+    }
+    firstDateInput.value = today.toISOString().split("T")[0];
+    firstDateInput.dispatchEvent(new Event("change"));
+  }
+
+  // NEW: Function to set automatic first date for the "Add New Loan" modal
+  function setAutomaticNewLoanFirstDate() {
+    const freq = getEl("new-loan-frequency").value;
+    const firstDateInput = getEl("new-loan-start-date");
+    const today = new Date();
+
+    switch (freq) {
+      case "daily":
+        break;
+      case "weekly":
+        today.setDate(today.getDate() + 7);
+        break;
+      case "monthly":
+        today.setMonth(today.getMonth() + 1);
+        break;
+    }
+    firstDateInput.value = today.toISOString().split("T")[0];
+    firstDateInput.dispatchEvent(new Event("change"));
   }
 
   function initializeEventListeners() {
@@ -1212,9 +1304,8 @@ document.addEventListener("DOMContentLoaded", () => {
           getEl("customer-form").reset();
           getEl("customer-id").value = "";
           getEl("customer-form-modal-title").textContent = "Add New Customer";
-          const today = new Date().toISOString().split("T")[0];
 
-          getEl("first-collection-date").value = today;
+          setAutomaticFirstDate();
 
           getEl("personal-info-fields").style.display = "block";
           getEl("kyc-info-fields").style.display = "block";
@@ -1240,6 +1331,9 @@ document.addEventListener("DOMContentLoaded", () => {
           getEl("customer-father-name").value = customer.fatherName || "";
           getEl("customer-whatsapp").value = customer.whatsapp || "";
           getEl("customer-address").value = customer.address || "";
+
+          getEl("customer-aadhar-number").value = customer.aadharNumber || "";
+          getEl("customer-pan-number").value = customer.panNumber || "";
 
           getEl("personal-info-fields").style.display = "block";
           getEl("kyc-info-fields").style.display = "block";
@@ -1319,6 +1413,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
           getEl("new-loan-customer-id").value = customerId;
           getEl("new-loan-form").reset();
+
+          // NEW: Call the automatic date function when opening the new loan modal
+          setAutomaticNewLoanFirstDate();
+
           getEl("new-loan-installment-preview").classList.add("hidden");
           getEl("new-loan-modal").classList.add("show");
         } else if (button.id === "export-active-btn") {
@@ -1441,6 +1539,8 @@ document.addEventListener("DOMContentLoaded", () => {
             fatherName: getEl("customer-father-name").value,
             address: getEl("customer-address").value,
             whatsapp: getEl("customer-whatsapp").value,
+            aadharNumber: getEl("customer-aadhar-number").value.trim(),
+            panNumber: getEl("customer-pan-number").value.trim().toUpperCase(),
           };
 
           const uploadFile = async (fileInputId, fileType) => {
@@ -1482,6 +1582,10 @@ document.addEventListener("DOMContentLoaded", () => {
               fatherName: updatePayload.fatherName,
               address: updatePayload.address,
               whatsapp: updatePayload.whatsapp,
+              aadharNumber: getEl("customer-aadhar-number").value.trim(),
+              panNumber: getEl("customer-pan-number")
+                .value.trim()
+                .toUpperCase(),
             };
             if (aadharUrl) finalUpdate["kycDocs.aadharUrl"] = aadharUrl;
             if (panUrl) finalUpdate["kycDocs.panUrl"] = panUrl;
@@ -1496,6 +1600,22 @@ document.addEventListener("DOMContentLoaded", () => {
               "Details saved successfully."
             );
           } else {
+            const customerName = getEl("customer-name").value.trim();
+            const existingCustomer = [
+              ...window.allCustomers.active,
+              ...window.allCustomers.settled,
+            ].find(
+              (c) => c.name.trim().toLowerCase() === customerName.toLowerCase()
+            );
+
+            if (existingCustomer) {
+              alert(
+                "Customer already exists by this name. Please use another name or go to active accounts to add a new loan to that previous customer."
+              );
+              toggleButtonLoading(saveBtn, false);
+              return;
+            }
+
             const p = parseFloat(getEl("principal-amount").value);
             const r = parseFloat(getEl("interest-rate-modal").value);
             const freq = getEl("collection-frequency").value;
@@ -1514,6 +1634,7 @@ document.addEventListener("DOMContentLoaded", () => {
               frequency: freq,
               loanDate: new Date().toISOString().split("T")[0],
               firstCollectionDate: firstDate,
+              loanEndDate: endDate,
               type: "simple_interest",
             };
             customerData.paymentSchedule = generateSimpleInterestSchedule(
@@ -1521,6 +1642,7 @@ document.addEventListener("DOMContentLoaded", () => {
               r,
               n,
               firstDate,
+              endDate,
               freq
             );
             customerData.owner = currentUser.uid;
@@ -1617,13 +1739,18 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
 
-        const totalInterest = calculateTotalInterest({
-          principal: p,
-          interestRate: r,
-          installments: n,
-          frequency: freq,
-        });
-
+        const tempInterest = (principal, rate, installments, frequency) => {
+          const monthlyRateDecimal = rate / 100;
+          if (frequency === "monthly")
+            return principal * monthlyRateDecimal * installments;
+          const dailyRate = monthlyRateDecimal / 30;
+          if (frequency === "weekly")
+            return principal * (dailyRate * 7) * installments;
+          if (frequency === "daily")
+            return principal * dailyRate * installments;
+          return 0;
+        };
+        const totalInterest = tempInterest(p, r, n, freq);
         const totalPayment = p + totalInterest;
         const perInstallment = totalPayment / n;
 
@@ -1656,11 +1783,12 @@ document.addEventListener("DOMContentLoaded", () => {
           const p = parseFloat(getEl("new-loan-principal").value);
           const r = parseFloat(getEl("new-loan-interest-rate").value);
           const freq = getEl("new-loan-frequency").value;
-          const firstDate = new Date().toISOString().split("T")[0];
+          const firstDate = getEl("new-loan-start-date").value;
           const endDate = getEl("new-loan-end-date").value;
+
           const n = calculateInstallments(firstDate, endDate, freq);
 
-          if (isNaN(p) || isNaN(r) || isNaN(n) || !endDate)
+          if (isNaN(p) || isNaN(r) || isNaN(n) || !firstDate || !endDate)
             throw new Error("Please fill all new loan fields correctly.");
 
           const newLoanData = {
@@ -1681,6 +1809,7 @@ document.addEventListener("DOMContentLoaded", () => {
               frequency: freq,
               loanDate: firstDate,
               firstCollectionDate: firstDate,
+              loanEndDate: endDate,
               type: "simple_interest",
             },
             paymentSchedule: generateSimpleInterestSchedule(
@@ -1688,6 +1817,7 @@ document.addEventListener("DOMContentLoaded", () => {
               r,
               n,
               firstDate,
+              endDate,
               freq
             ),
           };
@@ -1754,6 +1884,16 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
+    getEl("collection-frequency").addEventListener(
+      "change",
+      setAutomaticFirstDate
+    );
+    // NEW: Add listener for the new loan frequency dropdown
+    getEl("new-loan-frequency").addEventListener(
+      "change",
+      setAutomaticNewLoanFirstDate
+    );
+
     const loanDetailFields = [
       "principal-amount",
       "interest-rate-modal",
@@ -1773,6 +1913,7 @@ document.addEventListener("DOMContentLoaded", () => {
       "new-loan-principal",
       "new-loan-interest-rate",
       "new-loan-frequency",
+      "new-loan-start-date",
       "new-loan-end-date",
     ];
     newLoanDetailFields.forEach((id) => {
