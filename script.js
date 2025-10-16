@@ -211,6 +211,34 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
+  // *** NEW FUNCTION: FOR FILE SIZE WARNING POPUP ***
+  const showSizeAlert = () => {
+    if (document.querySelector(".popup-overlay")) return; // Don't show if one is already open
+
+    const alertPopup = document.createElement("div");
+    alertPopup.className = "popup-overlay";
+    alertPopup.style.zIndex = "9999";
+    alertPopup.innerHTML = `
+        <div class="popup-content">
+            <h2 style="color: var(--danger);">⚠️ File Too Large</h2>
+            <p>The selected file exceeds the 1 MB size limit. Please choose a smaller file.</p>
+            <button class="btn btn-primary" style="margin-top: 20px;" id="close-alert-btn">OK</button>
+        </div>
+    `;
+    document.body.appendChild(alertPopup);
+
+    const closePopup = () => alertPopup.remove();
+
+    document
+      .getElementById("close-alert-btn")
+      .addEventListener("click", closePopup);
+    alertPopup.addEventListener("click", (e) => {
+      if (e.target === alertPopup) {
+        closePopup();
+      }
+    });
+  };
+
   const calculateInstallments = (startDateStr, endDateStr, frequency) => {
     if (!startDateStr || !endDateStr) return 0;
 
@@ -1982,12 +2010,24 @@ document.addEventListener("DOMContentLoaded", () => {
           : "No file chosen";
         getEl("file-name-display").textContent = fileName;
       } else if (e.target.classList.contains("file-input")) {
-        const label = e.target.nextElementSibling;
+        const fileInput = e.target;
+        const label = fileInput.nextElementSibling;
         const labelSpan = label.querySelector("span");
-        const fileName =
-          e.target.files.length > 0
-            ? e.target.files[0].name
-            : "Choose a file...";
+        const file = fileInput.files[0];
+
+        if (file) {
+          const MAX_FILE_SIZE = 1 * 1024 * 1024; 
+          if (file.size > MAX_FILE_SIZE) {
+            showSizeAlert();
+            fileInput.value = ""; 
+            if (labelSpan) {
+              labelSpan.textContent = "Choose a file...";
+            }
+            return; 
+          }
+        }
+
+        const fileName = file ? file.name : "Choose a file...";
         if (labelSpan) {
           labelSpan.textContent = fileName;
         }
