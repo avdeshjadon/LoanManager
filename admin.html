@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Popup Controller | Admin Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center h-screen">
+
+    <div class="w-full max-w-md bg-white rounded-lg shadow-lg p-8">
+        <h1 class="text-2xl font-bold text-center text-gray-800 mb-2">⚙️ Popup Controller</h1>
+        <p class="text-center text-gray-500 mb-6">Control whether popup is visible on user’s website.</p>
+        
+        <div class="flex flex-col space-y-4">
+            <button id="show-popup-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out transform hover:scale-105">
+                Show Popup
+            </button>
+            <button id="hide-popup-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out transform hover:scale-105">
+                Hide Popup
+            </button>
+        </div>
+
+        <div id="status" class="mt-6 text-center text-sm font-medium text-gray-600 p-3 bg-gray-100 rounded-lg">
+            Status: Waiting for admin action...
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+          apiKey: "AIzaSyDuC17XR2injFbOyf0VNI_YG8RG9AuHVSM",
+          authDomain: "controller-4ac29.firebaseapp.com",
+          projectId: "controller-4ac29",
+          storageBucket: "controller-4ac29.firebasestorage.app",
+          messagingSenderId: "1021906676669",
+          appId: "1:1021906676669:web:d6f1701f8d99b8fc3900d4",
+          measurementId: "G-7BETKJYMXB"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const popupControlRef = doc(db, "settings", "popup");
+
+        const showPopupButton = document.getElementById('show-popup-btn');
+        const hidePopupButton = document.getElementById('hide-popup-btn');
+        const statusDiv = document.getElementById('status');
+
+        showPopupButton.addEventListener('click', async () => {
+            try {
+                await setDoc(popupControlRef, { isVisible: true });
+                statusDiv.textContent = '✅ Popup is now set to SHOW.';
+                statusDiv.classList.add('text-green-600');
+                statusDiv.classList.remove('text-red-600');
+            } catch (error) {
+                statusDiv.textContent = '❌ Error: Unable to send show signal.';
+                console.error(error);
+            }
+        });
+
+        hidePopupButton.addEventListener('click', async () => {
+            try {
+                await setDoc(popupControlRef, { isVisible: false });
+                statusDiv.textContent = '🚫 Popup is now set to HIDE.';
+                statusDiv.classList.add('text-red-600');
+                statusDiv.classList.remove('text-green-600');
+            } catch (error) {
+                statusDiv.textContent = '❌ Error: Unable to send hide signal.';
+                console.error(error);
+            }
+        });
+    </script>
+</body>
+</html>
