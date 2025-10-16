@@ -28,21 +28,22 @@ async function generateAndDownloadPDF(customerId) {
   }
 
   const { loanDetails, paymentSchedule, name } = customer;
-  
+
   const formatCurrencyPDF = (amount) => {
-      const value = Number(amount || 0);
-      return `Rs. ${value.toLocaleString("en-IN", {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-      })}`;
+    const value = Number(amount || 0);
+    return `Rs. ${value.toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
   };
 
   const totalPaid = paymentSchedule.reduce((sum, p) => sum + p.amountPaid, 0);
 
-  const totalInterestPayable = calculateConceptualTotalInterest(
+  // CORRECTED: Replaced the non-existent function with the correct one from script.js
+  const totalInterestPayable = calculateTotalInterest(
     loanDetails.principal,
     loanDetails.interestRate,
-    loanDetails.firstCollectionDate,
+    loanDetails.loanGivenDate,
     loanDetails.loanEndDate
   );
   const totalRepayable = loanDetails.principal + totalInterestPayable;
@@ -137,9 +138,18 @@ async function generateAndDownloadPDF(customerId) {
   doc.text("Customer & Loan Details", leftBoxX + 15, leftY);
   leftY += 15;
   leftY = drawDetailRow("Customer Name:", name, leftBoxX, leftY);
-  // UPDATED: Added Loan Given Date to PDF
-  leftY = drawDetailRow("Loan Given Date:", loanDetails.loanGivenDate || "N/A", leftBoxX, leftY);
-  leftY = drawDetailRow("First Collection:", loanDetails.firstCollectionDate, leftBoxX, leftY);
+  leftY = drawDetailRow(
+    "Loan Given Date:",
+    loanDetails.loanGivenDate || "N/A",
+    leftBoxX,
+    leftY
+  );
+  leftY = drawDetailRow(
+    "First Collection:",
+    loanDetails.firstCollectionDate,
+    leftBoxX,
+    leftY
+  );
   leftY = drawDetailRow(
     "Principal Amount:",
     formatCurrencyPDF(loanDetails.principal),
@@ -154,7 +164,7 @@ async function generateAndDownloadPDF(customerId) {
   );
   leftY = drawDetailRow(
     "Tenure:",
-    `${loanDetails.installments} ${loanDetails.frequency} installments`,
+    `${paymentSchedule.length} ${loanDetails.frequency} installments`, // Changed from loanDetails.installments
     leftBoxX,
     leftY
   );
