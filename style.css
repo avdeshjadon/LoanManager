@@ -1207,6 +1207,40 @@ fieldset legend {
   font-weight: 500;
   text-align: right;
 }
+/* Tweak only the Address layout inside the details panel */
+.profile-stat.profile-stat-address {
+  /* Keep other stats row-like; address becomes a neat two-line block */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.profile-stat.profile-stat-address .label {
+  /* Slightly separate the label from the address body */
+  margin-bottom: 2px;
+}
+.profile-stat.profile-stat-address .address-value {
+  /* Constrain width so long addresses don’t stretch the whole panel */
+  display: block;
+  max-width: 65ch;
+  width: 100%;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.45;
+}
+
+/* Fallback: apply to address value even if parent helper class is missing */
+.value.address-value {
+  display: block;
+  max-width: 65ch;
+  padding-left: 10px;
+  width: 60%;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.45;
+}
 .loan-progress-section {
   padding: 1.5rem 0;
 }

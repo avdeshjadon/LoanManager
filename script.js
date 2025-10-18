@@ -276,6 +276,31 @@ document.addEventListener("DOMContentLoaded", () => {
     throw new Error("Invalid frequency selected.");
   };
 
+  // Compute the loan end date given a start date, number of installments, and frequency
+  // Note: If n = 1, end date is the start date itself (single collection)
+  const computeEndDateFromInstallments = (startDateStr, n, frequency) => {
+    if (!startDateStr || !n || n <= 0) return startDateStr;
+    const [sy, sm, sd] = startDateStr.split("-").map(Number);
+    const first = new Date(sy, sm - 1, sd);
+    if (n === 1) return first.toISOString().split("T")[0];
+
+    let end = new Date(first);
+    const steps = n - 1; // because first collection occurs on start date
+    if (frequency === "daily") {
+      end.setDate(end.getDate() + steps);
+    } else if (frequency === "weekly") {
+      end.setDate(end.getDate() + steps * 7);
+    } else if (frequency === "monthly") {
+      // Add months based on the original start date to preserve day-of-month intent
+      const base = new Date(first);
+      base.setMonth(base.getMonth() + steps);
+      end = base;
+    } else {
+      return startDateStr;
+    }
+    return new Date(end).toISOString().split("T")[0];
+  };
+
   const generateSimpleInterestSchedule = (totalRepayable, n) => {
     const schedule = [];
     let cumulativeAmount = 0;
@@ -303,22 +328,56 @@ document.addEventListener("DOMContentLoaded", () => {
     return schedule;
   };
 
+  // Generate schedule for a chosen per-installment amount (except possibly last remainder)
+  const generateScheduleWithInstallmentAmount = (totalRepayable, perInstallment) => {
+    const schedule = [];
+    if (!perInstallment || perInstallment <= 0) return schedule;
+    const totalCents = Math.round(totalRepayable * 100);
+    const perCents = Math.round(perInstallment * 100);
+    if (perCents <= 0) return schedule;
+    const n = Math.max(1, Math.ceil(totalCents / perCents));
+    let remainingCents = totalCents;
+    for (let i = 1; i <= n; i++) {
+      let amtCents = i < n ? perCents : remainingCents;
+      if (i < n) remainingCents -= perCents;
+      if (remainingCents < 0) remainingCents = 0;
+      const amt = +(amtCents / 100).toFixed(2);
+      schedule.push({
+        installment: i,
+        amountDue: amt,
+        amountPaid: 0,
+        pendingAmount: amt,
+        status: "Due",
+        paidDate: null,
+      });
+    }
+    return schedule;
+  };
+
   const showConfirmation = (title, message, onConfirm) => {
+    const modal = getEl("confirmation-modal");
     getEl("confirmation-title").textContent = title;
     getEl("confirmation-message").textContent = message;
-    getEl("confirmation-modal").classList.add("show");
+    // Ensure it's on top of any other open modal (like settle-selection-modal)
+    const prevZ = modal.style.zIndex;
+    modal.style.zIndex = "10001";
+    modal.classList.add("show");
     const confirmBtn = getEl("confirmation-confirm-btn");
     const cancelBtn = getEl("confirmation-cancel-btn");
-    const confirmHandler = () => {
-      onConfirm();
-      cleanup();
-    };
-    const cancelHandler = () => cleanup();
     const cleanup = () => {
-      getEl("confirmation-modal").classList.remove("show");
+      modal.classList.remove("show");
+      modal.style.zIndex = prevZ || "";
       confirmBtn.removeEventListener("click", confirmHandler);
       cancelBtn.removeEventListener("click", cancelHandler);
     };
+    const confirmHandler = () => {
+      try {
+        if (typeof onConfirm === "function") onConfirm();
+      } finally {
+        cleanup();
+      }
+    };
+    const cancelHandler = () => cleanup();
     confirmBtn.addEventListener("click", confirmHandler, { once: true });
     cancelBtn.addEventListener("click", cancelHandler, { once: true });
   };
@@ -851,7 +910,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }</span></div>
     <div class="profile-stat"><span class="label">Father's Name</span><span class="value">${
       customer.fatherName || "N/A"
-    }</span></div><div class="profile-stat"><span class="label">Address</span><span class="value">${
+    }</span></div><div class="profile-stat"><span class="label">Address</span><span class="value address-value" style="text-align:left; white-space: normal; word-break: break-word;">${
       customer.address || "N/A"
     }</span></div></div><div class="profile-section"><h4>KYC Documents</h4><div class="profile-stat"><span class="label">Aadhar Card</span>${aadharButton}</div><div class="profile-stat"><span class="label">PAN Card</span>${panButton}</div><div class="profile-stat"><span class="label">Client Photo</span>${picButton}</div><div class="profile-stat"><span class="label">Bank Details</span>${bankButton}</div></div><div class="loan-progress-section"><h4>Loan Progress (${paidInstallments} of ${
       schedule.length
@@ -983,11 +1042,71 @@ document.addEventListener("DOMContentLoaded", () => {
         endDate
       );
       const totalRepayable = p + totalInterest;
-      const installmentAmount = totalRepayable / n;
+      const minInstallment = +(totalRepayable / n).toFixed(2);
 
-      previewDiv.innerHTML = `<p>Calculated: <strong>${n} installments</strong> of approx. <strong>${formatCurrency(
-        installmentAmount
-      )}</strong> each.</p>`;
+      // Build interactive UI to allow custom amount (>= minimum)
+      previewDiv.innerHTML = `
+        <div class="calc-flex">
+          <p style="margin:0 0 .5rem 0">Calculated: <strong>${n} installments</strong> of approx. <strong>${formatCurrency(minInstallment)}</strong> each.</p>
+          <div class="form-row" style="align-items:end; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group" style="margin:0">
+              <label for="custom-installment-amount">Choose per-installment amount (min ${formatCurrency(minInstallment)})</label>
+              <input type="number" step="0.01" min="${minInstallment}" value="${minInstallment}" id="custom-installment-amount" class="form-control" />
+            </div>
+            <div class="form-group" style="margin:0">
+              <div id="custom-emi-summary" class="calc-summary"></div>
+            </div>
+          </div>
+          <input type="hidden" id="chosen-n-installments" value="${n}" />
+          <input type="hidden" id="chosen-end-date" value="${endDate}" />
+        </div>`;
+
+      const summaryEl = getEl("custom-emi-summary");
+      const inputEl = getEl("custom-installment-amount");
+      const hiddenN = getEl("chosen-n-installments");
+      const hiddenEnd = getEl("chosen-end-date");
+
+      const applyValue = () => {
+        let raw = inputEl.value;
+        if (raw === "" || raw === null) {
+          // show empty without recalculating yet
+          summaryEl.innerHTML = `<span>Enter an amount ≥ ${formatCurrency(minInstallment)}</span>`;
+          inputEl.classList.remove("invalid");
+          return;
+        }
+        let chosen = parseFloat(raw);
+        if (isNaN(chosen)) {
+          inputEl.classList.add("invalid");
+          return;
+        }
+        if (chosen < minInstallment) {
+          inputEl.classList.add("invalid");
+          summaryEl.innerHTML = `<span style="color:var(--danger)">Amount is below minimum ${formatCurrency(minInstallment)}</span>`;
+          return;
+        }
+        inputEl.classList.remove("invalid");
+        // recompute using cents to avoid rounding issues
+  const totalCents = Math.round(totalRepayable * 100);
+  const chosenCents = Math.round(chosen * 100);
+  const newN = Math.max(1, Math.ceil(totalCents / chosenCents));
+        const newEnd = computeEndDateFromInstallments(firstDate, newN, freq);
+        hiddenN.value = String(newN);
+        hiddenEnd.value = newEnd;
+  const remainderCents = totalCents - chosenCents * (newN - 1);
+  const lastAmt = +(remainderCents / 100).toFixed(2);
+  const lastInfo = lastAmt !== chosen ? ` &nbsp;|&nbsp; <span>Last: <strong>${formatCurrency(lastAmt)}</strong></span>` : "";
+  summaryEl.innerHTML = `<span><strong>${newN}</strong> installments</span> &nbsp;|&nbsp; <span>Per installment: <strong>${formatCurrency(chosen)}</strong></span>${lastInfo} &nbsp;|&nbsp; <span>Ends on: <strong>${newEnd}</strong></span>`;
+      };
+      inputEl.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          applyValue();
+        }
+      });
+      inputEl.addEventListener("blur", applyValue);
+      // Start empty to let user type freely
+      inputEl.value = String(minInstallment);
+      applyValue();
       previewDiv.classList.remove("error", "hidden");
     } catch (error) {
       previewDiv.innerHTML = `<p>${error.message}</p>`;
@@ -1022,11 +1141,67 @@ document.addEventListener("DOMContentLoaded", () => {
         endDate
       );
       const totalRepayable = p + totalInterest;
-      const installmentAmount = totalRepayable / n;
+      const minInstallment = +(totalRepayable / n).toFixed(2);
 
-      previewDiv.innerHTML = `<p>New Loan: <strong>${n} installments</strong> of approx. <strong>${formatCurrency(
-        installmentAmount
-      )}</strong> each.</p>`;
+      previewDiv.innerHTML = `
+        <div class="calc-flex">
+          <p style="margin:0 0 .5rem 0">New Loan: <strong>${n} installments</strong> of approx. <strong>${formatCurrency(minInstallment)}</strong> each.</p>
+          <div class="form-row" style="align-items:end; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group" style="margin:0">
+              <label for="new-loan-custom-installment-amount">Choose per-installment amount (min ${formatCurrency(minInstallment)})</label>
+              <input type="number" step="0.01" min="${minInstallment}" value="${minInstallment}" id="new-loan-custom-installment-amount" class="form-control" />
+            </div>
+            <div class="form-group" style="margin:0">
+              <div id="new-loan-custom-emi-summary" class="calc-summary"></div>
+            </div>
+          </div>
+          <input type="hidden" id="new-loan-chosen-n-installments" value="${n}" />
+          <input type="hidden" id="new-loan-chosen-end-date" value="${endDate}" />
+        </div>`;
+
+      const summaryEl = getEl("new-loan-custom-emi-summary");
+      const inputEl = getEl("new-loan-custom-installment-amount");
+      const hiddenN = getEl("new-loan-chosen-n-installments");
+      const hiddenEnd = getEl("new-loan-chosen-end-date");
+
+      const applyValue = () => {
+        let raw = inputEl.value;
+        if (raw === "" || raw === null) {
+          summaryEl.innerHTML = `<span>Enter an amount ≥ ${formatCurrency(minInstallment)}</span>`;
+          inputEl.classList.remove("invalid");
+          return;
+        }
+        let chosen = parseFloat(raw);
+        if (isNaN(chosen)) {
+          inputEl.classList.add("invalid");
+          return;
+        }
+        if (chosen < minInstallment) {
+          inputEl.classList.add("invalid");
+          summaryEl.innerHTML = `<span style=\"color:var(--danger)\">Amount is below minimum ${formatCurrency(minInstallment)}</span>`;
+          return;
+        }
+        inputEl.classList.remove("invalid");
+  const totalCents = Math.round(totalRepayable * 100);
+  const chosenCents = Math.round(chosen * 100);
+  const newN = Math.max(1, Math.ceil(totalCents / chosenCents));
+        const newEnd = computeEndDateFromInstallments(firstDate, newN, freq);
+        hiddenN.value = String(newN);
+        hiddenEnd.value = newEnd;
+  const remainderCents = totalCents - chosenCents * (newN - 1);
+  const lastAmt = +(remainderCents / 100).toFixed(2);
+  const lastInfo = lastAmt !== chosen ? ` &nbsp;|&nbsp; <span>Last: <strong>${formatCurrency(lastAmt)}</strong></span>` : "";
+  summaryEl.innerHTML = `<span><strong>${newN}</strong> installments</span> &nbsp;|&nbsp; <span>Per installment: <strong>${formatCurrency(chosen)}</strong></span>${lastInfo} &nbsp;|&nbsp; <span>Ends on: <strong>${newEnd}</strong></span>`;
+      };
+      inputEl.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          applyValue();
+        }
+      });
+      inputEl.addEventListener("blur", applyValue);
+      inputEl.value = String(minInstallment);
+      applyValue();
       previewDiv.classList.remove("error", "hidden");
     } catch (error) {
       previewDiv.innerHTML = `<p>${error.message}</p>`;
@@ -1442,7 +1617,11 @@ document.addEventListener("DOMContentLoaded", () => {
           );
           if (selectedRadio) {
             const loanIdToSettle = selectedRadio.value;
-            settleLoanById(loanIdToSettle);
+            showConfirmation(
+              "Settle This Loan?",
+              "This will move the selected loan to Settled. Continue?",
+              () => settleLoanById(loanIdToSettle)
+            );
           } else {
             showToast(
               "error",
@@ -1450,6 +1629,33 @@ document.addEventListener("DOMContentLoaded", () => {
               "Please select a loan to settle."
             );
           }
+        } else if (button.id === "settle-all-btn") {
+          const firstInput = document.querySelector('input[name="settle-loan"]');
+          if (!firstInput) {
+            showToast("error", "No Loans", "No active loans found for this customer.");
+            return;
+          }
+          // Radios exist for all active loans for this customer
+          const inputs = Array.from(document.querySelectorAll('input[name="settle-loan"]'));
+          const loanIds = inputs.map((r) => r.value);
+          if (loanIds.length === 0) {
+            showToast("error", "No Loans", "No active loans found for this customer.");
+            return;
+          }
+          showConfirmation(
+            "Settle ALL Loans?",
+            "This will move all selected customer's active loans to Settled. Continue?",
+            async () => {
+              try {
+                for (const id of loanIds) {
+                  await settleLoanById(id);
+                }
+                showToast("success", "All Settled", "All active loans for the customer have been settled.");
+              } catch (err) {
+                showToast("error", "Failed", err.message || String(err));
+              }
+            }
+          );
         } else if (button.id === "add-new-loan-btn") {
           const customerId = button.dataset.id;
           const customer = window.allCustomers.active.find(
@@ -1667,30 +1873,54 @@ document.addEventListener("DOMContentLoaded", () => {
             const firstDate = getEl("first-collection-date").value;
             const endDate = getEl("loan-end-date").value;
 
-            const n = calculateInstallments(firstDate, endDate, freq);
+            // Base tenure from the date range
+            const nBase = calculateInstallments(firstDate, endDate, freq);
 
-            if (isNaN(p) || isNaN(r) || isNaN(n) || !firstDate)
+            if (isNaN(p) || isNaN(r) || isNaN(nBase) || !firstDate)
               throw new Error("Please fill all loan detail fields correctly.");
 
             const loanGivenDate = new Date().toISOString().split("T")[0];
 
+            // Keep total interest constant using provided dates for interest calculation
+            const totalRepayable =
+              p + calculateTotalInterest(p, r, loanGivenDate, endDate);
+
+            // If user provided a custom per-installment amount, recompute number of installments and end date
+            const customAmtInput = getEl("custom-installment-amount");
+            let chosenN = nBase;
+            let chosenEndDate = endDate;
+            let schedule;
+            if (customAmtInput) {
+              const minInstallment = +(totalRepayable / nBase).toFixed(2);
+              let chosenAmt = parseFloat(customAmtInput.value);
+              if (!chosenAmt || isNaN(chosenAmt) || chosenAmt < minInstallment) chosenAmt = minInstallment;
+              chosenN = Math.max(1, Math.ceil(totalRepayable / chosenAmt));
+              chosenEndDate = computeEndDateFromInstallments(
+                firstDate,
+                chosenN,
+                freq
+              );
+              schedule = generateScheduleWithInstallmentAmount(
+                +totalRepayable.toFixed(2),
+                +chosenAmt.toFixed(2)
+              );
+            }
+
             customerData.loanDetails = {
               principal: p,
               interestRate: r,
-              installments: n,
+              installments: chosenN,
               frequency: freq,
               loanGivenDate: loanGivenDate,
               firstCollectionDate: firstDate,
+              // Keep original endDate here so interest stays constant across the app
               loanEndDate: endDate,
               type: "simple_interest",
             };
 
-            const totalRepayable =
-              p + calculateTotalInterest(p, r, loanGivenDate, endDate);
-            let paymentSchedule = generateSimpleInterestSchedule(
-              totalRepayable,
-              n
-            );
+            let paymentSchedule = schedule
+              ? schedule
+              : generateSimpleInterestSchedule(+totalRepayable.toFixed(2), nBase);
 
             let currentDate = new Date(firstDate);
             paymentSchedule.forEach((inst, index) => {
@@ -1840,12 +2070,32 @@ document.addEventListener("DOMContentLoaded", () => {
           const firstDate = getEl("new-loan-start-date").value;
           const endDate = getEl("new-loan-end-date").value;
 
-          const n = calculateInstallments(firstDate, endDate, freq);
+          const nBase = calculateInstallments(firstDate, endDate, freq);
 
-          if (isNaN(p) || isNaN(r) || isNaN(n) || !firstDate || !endDate)
+          if (isNaN(p) || isNaN(r) || isNaN(nBase) || !firstDate || !endDate)
             throw new Error("Please fill all new loan fields correctly.");
 
           const loanGivenDate = new Date().toISOString().split("T")[0];
+
+          // Keep total interest same based on provided range
+          const totalRepayable = p + calculateTotalInterest(p, r, loanGivenDate, endDate);
+
+          // Apply custom per-installment if provided
+          const customAmtInput = getEl("new-loan-custom-installment-amount");
+          let chosenN = nBase;
+          let chosenEndDate = endDate;
+          let schedule;
+          if (customAmtInput) {
+            const minInstallment = +(totalRepayable / nBase).toFixed(2);
+            let chosenAmt = parseFloat(customAmtInput.value);
+            if (!chosenAmt || isNaN(chosenAmt) || chosenAmt < minInstallment) chosenAmt = minInstallment;
+            chosenN = Math.max(1, Math.ceil(totalRepayable / chosenAmt));
+            chosenEndDate = computeEndDateFromInstallments(firstDate, chosenN, freq);
+            schedule = generateScheduleWithInstallmentAmount(
+              +totalRepayable.toFixed(2),
+              +chosenAmt.toFixed(2)
+            );
+          }
 
           const newLoanData = {
             name: baseCustomer.name,
@@ -1861,25 +2111,23 @@ document.addEventListener("DOMContentLoaded", () => {
             loanDetails: {
               principal: p,
               interestRate: r,
-              installments: n,
+              installments: chosenN,
               frequency: freq,
               loanGivenDate: loanGivenDate,
               firstCollectionDate: firstDate,
+              // Keep original endDate to preserve interest total
               loanEndDate: endDate,
               type: "simple_interest",
             },
           };
 
-          const totalRepayable =
-            p + calculateTotalInterest(p, r, loanGivenDate, endDate);
-          let paymentSchedule = generateSimpleInterestSchedule(
-            totalRepayable,
-            n
-          );
+          let paymentSchedule = schedule
+            ? schedule
+            : generateSimpleInterestSchedule(+totalRepayable.toFixed(2), nBase);
 
           let currentDate = new Date(firstDate);
           paymentSchedule.forEach((inst, index) => {
-            if (index > 0) {
+              if (index > 0) {
               if (freq === "daily") {
                 currentDate.setDate(currentDate.getDate() + 1);
               } else if (freq === "weekly") {
