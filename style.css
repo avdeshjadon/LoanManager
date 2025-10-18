@@ -690,7 +690,7 @@ textarea.form-control {
 .file-input-wrapper {
   position: relative;
   width: 100%;
-  height: 48px;
+  height: 48px; /* fixed control height for visual consistency */
 }
 .file-input {
   position: absolute;
@@ -702,18 +702,22 @@ textarea.form-control {
 }
 .file-input-label {
   display: flex;
-  align-items: center;
-  justify-content: center; /* Center content horizontally */
+  align-items: center; /* vertically center icon and text */
+  justify-content: flex-start; /* icon then text on same row */
   gap: 0.75rem; /* Space between icon and text */
   width: 100%;
   height: 100%;
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 1rem; /* reduce vertical padding to avoid text clipping */
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   background-color: var(--bg-main);
   color: var(--text-gray);
   cursor: pointer;
   transition: all 0.25s;
+  /* Prevent oversized filenames from spilling outside the label */
+  overflow: hidden;
+  line-height: 1; /* normalized line-height so text aligns with icon */
+  white-space: nowrap; /* keep contents in one line */
 }
 .file-input:focus + .file-input-label,
 .file-input-label:hover {
@@ -723,16 +727,25 @@ textarea.form-control {
   box-shadow: 0 0 0 3px var(--primary-t-08);
 }
 .file-input-label i {
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   color: var(--primary);
   flex-shrink: 0; /* Prevent icon from shrinking */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1; /* align icon visually with text */
 }
 .file-input-label span {
-  white-space: nowrap;
+  display: inline-flex; /* keep on the same row as icon */
+  align-items: center; /* vertically center text with icon */
+  line-height: 1; /* align text with icon */
+  white-space: nowrap; /* stay on one line next to icon */
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 70%; /* Prevent long filenames from pushing the icon */
-  text-align: center;
+  min-width: 0; /* allow flex item to shrink for ellipsis */
+  flex: 1 1 auto; /* text takes remaining space */
+  max-width: 100%;
+  text-align: left;
 }
 .installment-preview {
   margin-top: 1rem;
@@ -1080,6 +1093,10 @@ fieldset legend {
 #confirmation-modal .modal-content {
   max-width: 450px;
 }
+  /* Ensure reset password modal is visible above the login auth container */
+  #reset-password-modal {
+    z-index: 6001;
+  }
 
 .modal.show .modal-content {
   transform: scale(1);

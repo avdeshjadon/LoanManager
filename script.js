@@ -211,6 +211,19 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
+  // Helper: truncate long filenames with middle ellipsis and preserve extension
+  const truncateMiddle = (name, maxChars) => {
+    if (!name || typeof name !== "string") return "";
+    if (!maxChars || name.length <= maxChars) return name;
+    const dot = name.lastIndexOf(".");
+    const ext = dot > 0 ? name.slice(dot) : "";
+    const base = dot > 0 ? name.slice(0, dot) : name;
+    const room = Math.max(3, maxChars - ext.length);
+    if (base.length + ext.length <= maxChars) return name;
+    const keep = Math.max(2, Math.floor((room - 3) / 2));
+    return `${base.slice(0, keep)}...${base.slice(-keep)}${ext}`;
+  };
+
   // *** NEW FUNCTION: FOR FILE SIZE WARNING POPUP ***
   const showSizeAlert = () => {
     if (document.querySelector(".popup-overlay")) return; // Don't show if one is already open
@@ -398,26 +411,30 @@ document.addEventListener("DOMContentLoaded", () => {
   const calculateKeyStats = (activeLoans, settledLoans) => {
     let totalPrincipal = 0,
       totalOutstanding = 0,
-      totalInterestEarned = 0;
+      totalInterestEarned = 0; // Accrued interest up to today (or end date)
 
     [...activeLoans, ...settledLoans].forEach((c) => {
       if (c.loanDetails && c.paymentSchedule) {
         totalPrincipal += c.loanDetails.principal;
 
+        const todayStr = new Date().toISOString().split("T")[0];
+        const endBound = (c.status === "settled")
+          ? c.loanDetails.loanEndDate
+          : (todayStr < c.loanDetails.loanEndDate
+              ? todayStr
+              : c.loanDetails.loanEndDate);
         const totalInterest = calculateTotalInterest(
           c.loanDetails.principal,
           c.loanDetails.interestRate,
           c.loanDetails.loanGivenDate,
-          c.loanDetails.loanEndDate
+          endBound
         );
         const totalRepayable = c.loanDetails.principal + totalInterest;
         const totalPaid = c.paymentSchedule.reduce(
           (sum, p) => sum + p.amountPaid,
           0
         );
-
-        const interestPaid = Math.max(0, totalPaid - c.loanDetails.principal);
-        totalInterestEarned += interestPaid;
+        totalInterestEarned += Math.max(0, totalInterest);
 
         if (c.status === "active") {
           totalOutstanding += totalRepayable - totalPaid;
@@ -1326,21 +1343,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (target.id === "forgot-password-link") {
         e.preventDefault();
-        const email = prompt(
-          "Please enter your email to receive a password reset link:"
-        );
-        if (email) {
-          try {
-            await auth.sendPasswordResetEmail(email);
-            showToast(
-              "success",
-              "Email Sent",
-              "Password reset link sent to your email."
-            );
-          } catch (error) {
-            showToast("error", "Error", error.message);
-          }
-        }
+        getEl("reset-password-modal").classList.add("show");
+        // Focus the email field for immediate input
+        setTimeout(() => {
+          getEl("reset-email")?.focus();
+        }, 0);
       }
       if (
         target.closest("#mobile-menu-btn") ||
@@ -1576,6 +1583,8 @@ document.addEventListener("DOMContentLoaded", () => {
             .querySelectorAll(".file-input-label span")
             .forEach((span) => {
               span.textContent = "Choose a file...";
+              const lbl = span.closest('.file-input-label');
+              if (lbl) lbl.title = "";
             });
           getEl("customer-form-modal").classList.add("show");
         } else if (button.id === "edit-customer-info-btn") {
@@ -1818,6 +1827,21 @@ document.addEventListener("DOMContentLoaded", () => {
     document.body.addEventListener("submit", async (e) => {
       e.preventDefault();
       const form = e.target;
+      if (form.id === "reset-password-form") {
+        const btn = getEl("reset-password-submit");
+        toggleButtonLoading(btn, true, "Sending...");
+        try {
+          const email = getEl("reset-email").value.trim();
+          await auth.sendPasswordResetEmail(email);
+          showToast("success", "Email Sent", "Password reset link sent to your email.");
+          getEl("reset-password-modal").classList.remove("show");
+        } catch (error) {
+          showToast("error", "Error", error.message);
+        } finally {
+          toggleButtonLoading(btn, false);
+        }
+        return;
+      }
       if (form.id === "customer-form") {
         const id = getEl("customer-id").value;
         const saveBtn = getEl("customer-modal-save");
@@ -2305,6 +2329,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const fileInput = e.target;
         const label = fileInput.nextElementSibling;
         const labelSpan = label.querySelector("span");
+        const labelIcon = label.querySelector("i");
         const file = fileInput.files[0];
 
         if (file) {
@@ -2314,6 +2339,7 @@ document.addEventListener("DOMContentLoaded", () => {
             fileInput.value = ""; 
             if (labelSpan) {
               labelSpan.textContent = "Choose a file...";
+              if (label) label.title = "";
             }
             return; 
           }
@@ -2321,7 +2347,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const fileName = file ? file.name : "Choose a file...";
         if (labelSpan) {
-          labelSpan.textContent = fileName;
+          // Estimate available characters based on available pixel width
+          const labelWidth = label.clientWidth || 0;
+          const iconWidth = (labelIcon && labelIcon.clientWidth) || 0;
+          const gap = 12; // approximate gap/padding
+          const availablePx = Math.max(0, labelWidth - iconWidth - gap - 24);
+          const avgCharPx = 7; // rough average width of a character
+          const maxChars = Math.max(12, Math.floor(availablePx / avgCharPx));
+          const displayName = file ? truncateMiddle(file.name, maxChars) : fileName;
+          labelSpan.textContent = displayName;
+          if (label) label.title = file ? file.name : ""; // show full name on hover
         }
       }
     });
