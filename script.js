@@ -905,29 +905,57 @@ document.addEventListener("DOMContentLoaded", () => {
     <div class="profile-stat"><span class="label">Loan Given Date</span><span class="value">${
       details.loanGivenDate || "N/A"
     }</span></div>
+    <div class="profile-stat"><span class="label">Date of Birth</span><span class="value">${
+      customer.dob || "N/A"
+    }</span></div>
     <div class="profile-stat"><span class="label">First Collection</span><span class="value">${
       details.firstCollectionDate || "N/A"
     }</span></div>
     <div class="profile-stat"><span class="label">Last Loan Date</span><span class="value">${
       schedule && schedule.length > 0 ? schedule[schedule.length - 1].dueDate : "N/A"
     }</span></div>
+    </div>
+    <div class="profile-section"><h4>Customer Loan Totals</h4>
+      ${(() => {
+        const allLoans = [...window.allCustomers.active, ...window.allCustomers.settled]
+          .filter((c) => c.name === customer.name && c.loanDetails && c.paymentSchedule);
+        let totalP = 0, totalI = 0, totalPaidAll = 0;
+        allLoans.forEach((c) => {
+          const li = c.loanDetails;
+          const interest = calculateTotalInterest(
+            li.principal,
+            li.interestRate,
+            li.loanGivenDate,
+            li.loanEndDate
+          );
+          totalP += Number(li.principal || 0);
+          totalI += Number(interest || 0);
+          totalPaidAll += c.paymentSchedule.reduce((s, p) => s + (p.amountPaid || 0), 0);
+        });
+        const outstanding = Math.max(0, totalP + totalI - totalPaidAll);
+        return `<div class="profile-stat"><span class="label">Total Principal (All Loans)</span><span class="value">${formatCurrency(totalP)}</span></div>
+                <div class="profile-stat"><span class="label">Total Interest (All Loans)</span><span class="value">${formatCurrency(totalI)}</span></div>
+                <div class="profile-stat"><span class="label">Outstanding (All Loans)</span><span class="value">${formatCurrency(outstanding)}</span></div>`;
+      })()}
+    </div>
+    <div class="profile-section"><h4>KYC Documents</h4><div class="profile-stat"><span class="label">Aadhar Card</span>${aadharButton}</div><div class="profile-stat"><span class="label">PAN Card</span>${panButton}</div><div class="profile-stat"><span class="label">Client Photo</span>${picButton}</div><div class="profile-stat"><span class="label">Bank Details</span>${bankButton}</div>
     <div class="profile-stat"><span class="label">Father's Name</span><span class="value">${
       customer.fatherName || "N/A"
-    }</span></div><div class="profile-stat"><span class="label">Address</span><span class="value address-value" style="text-align:left; white-space: normal; word-break: break-word;">${
+    }</span></div>
+    <div class="profile-stat profile-stat-address"><span class="label">Address</span><span class="value address-value">${
       customer.address || "N/A"
-    }</span></div></div><div class="profile-section"><h4>KYC Documents</h4><div class="profile-stat"><span class="label">Aadhar Card</span>${aadharButton}</div><div class="profile-stat"><span class="label">PAN Card</span>${panButton}</div><div class="profile-stat"><span class="label">Client Photo</span>${picButton}</div><div class="profile-stat"><span class="label">Bank Details</span>${bankButton}</div></div><div class="loan-progress-section"><h4>Loan Progress (${paidInstallments} of ${
+    }</span></div>
+    </div><div class="loan-progress-section"><h4>Loan Progress (${paidInstallments} of ${
       schedule.length
     } Paid)</h4><div class="progress-bar"><div class="progress-bar-inner" style="width: ${progress}%;"></div></div></div><div class="loan-actions"><button class="btn btn-outline" id="edit-customer-info-btn" data-id="${
       customer.id
     }"><i class="fas fa-edit"></i> Edit Info</button>${actionButtons}</div></div><div class="emi-schedule-panel"><div class="emi-table-container"><table class="emi-table"><thead><tr><th>#</th><th>Due Date</th><th>Amount Due</th><th>Amount Paid</th><th>Status</th><th class="no-pdf">Action</th></tr></thead><tbody id="emi-schedule-body-details"></tbody></table></div><div class="loan-summary-box"><h4>Loan Summary</h4><div class="calc-result-item"><span>Principal Amount</span><span>${formatCurrency(
       details.principal
-    )}</span></div><div class="calc-result-item"><span>Total Interest Paid</span><span>${formatCurrency(
-      totalInterestPaid
-    )}</span></div><div class="calc-result-item"><span>Outstanding Amount</span><span>${formatCurrency(
+    )}</span></div><div class="calc-result-item"><span>Interest Rate (Monthly)</span><span>${
+      (details.interestRate ?? 0) + "%"
+    }</span></div><div class="calc-result-item"><span>Outstanding Amount</span><span>${formatCurrency(
       remainingToCollect
-    )}</span></div><div class="calc-result-item"><span>Next Due</span><span>${
-      nextDue ? nextDue.dueDate : "N/A"
-    }</span></div></div><div class="modal-summary-stats"><div class="summary-stat-item"><span class="label">Amount Received</span><span class="value received">${formatCurrency(
+    )}</span></div></div><div class="modal-summary-stats"><div class="summary-stat-item"><span class="label">Amount Received</span><span class="value received">${formatCurrency(
       totalPaid
     )}</span></div><div class="summary-stat-item"><span class="label">Amount Remaining</span><span class="value remaining">${formatCurrency(
       remainingToCollect
@@ -1560,6 +1588,7 @@ document.addEventListener("DOMContentLoaded", () => {
           getEl("customer-id").value = customer.id;
           getEl("customer-name").value = customer.name;
           getEl("customer-phone").value = customer.phone || "";
+          getEl("customer-dob").value = customer.dob || "";
           getEl("customer-father-name").value = customer.fatherName || "";
           getEl("customer-whatsapp").value = customer.whatsapp || "";
           getEl("customer-address").value = customer.address || "";
@@ -1798,6 +1827,7 @@ document.addEventListener("DOMContentLoaded", () => {
           const customerData = {
             name: getEl("customer-name").value,
             phone: getEl("customer-phone").value,
+            dob: getEl("customer-dob").value,
             fatherName: getEl("customer-father-name").value,
             address: getEl("customer-address").value,
             whatsapp: getEl("customer-whatsapp").value,
@@ -1841,6 +1871,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const finalUpdate = {
               name: updatePayload.name,
               phone: updatePayload.phone,
+              dob: updatePayload.dob,
               fatherName: updatePayload.fatherName,
               address: updatePayload.address,
               whatsapp: updatePayload.whatsapp,

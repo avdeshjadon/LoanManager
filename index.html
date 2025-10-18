@@ -288,8 +288,8 @@
                   />
                 </div>
                 <div class="form-group">
-                  <label for="customer-father-name">Father's Name</label
-                  ><input
+                  <label for="customer-father-name">Father's Name</label>
+                  <input
                     type="text"
                     id="customer-father-name"
                     class="form-control"
@@ -310,9 +310,21 @@
                   />
                 </div>
               </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="customer-dob">Date of Birth (dd-mm-yyyy)</label>
+                  <input
+                    type="text"
+                    id="customer-dob"
+                    class="form-control"
+                    placeholder="dd-mm-yyyy"
+                    pattern="^\d{2}-\d{2}-\d{4}$"
+                  />
+                </div>
+              </div>
               <div class="form-group">
-                <label for="customer-address">Full Address</label
-                ><textarea
+                <label for="customer-address">Full Address</label>
+                <textarea
                   id="customer-address"
                   class="form-control"
                   rows="3"
@@ -417,6 +429,7 @@
                   </div>
                 </div>
               </div>
+              <!-- Father and Address kept in Personal Information for Add/Edit form -->
             </fieldset>
             <div id="loan-details-fields">
               <fieldset>
