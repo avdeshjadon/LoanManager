@@ -1381,18 +1381,25 @@ document.addEventListener("DOMContentLoaded", () => {
           modal.querySelector(".payment-customer-avatar").textContent =
             customer.name.charAt(0).toUpperCase();
           getEl("payment-installment-display").textContent = installmentNum;
+          // Show remaining due (EMI - already paid), not the full installment
+          const existingPaid = Number(installment.amountPaid || 0);
+          const computedPending =
+            installment.pendingAmount !== undefined && installment.pendingAmount !== null
+              ? Number(installment.pendingAmount)
+              : Math.max(0, Number(installment.amountDue) - existingPaid);
           getEl("payment-due-display").textContent = formatCurrency(
-            installment.amountDue
+            computedPending
           );
 
           const paymentAmountInput = getEl("payment-amount");
-          paymentAmountInput.value =
-            installment.amountPaid > 0 ? installment.amountPaid : "";
-          paymentAmountInput.setAttribute("max", installment.amountDue);
+          // Do not prefill with previously paid; user enters the additional payment
+          paymentAmountInput.value = "";
+          // Cap input to remaining amount only
+          paymentAmountInput.setAttribute("max", computedPending);
 
           const updatePendingDisplay = () => {
-            const amountPaid = parseFloat(paymentAmountInput.value) || 0;
-            const pendingAmount = installment.amountDue - amountPaid;
+            const payNow = parseFloat(paymentAmountInput.value) || 0;
+            const pendingAmount = Math.max(0, computedPending - payNow);
             const pendingContainer = modal.querySelector(
               ".payment-pending-display"
             );
@@ -1409,7 +1416,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
           const payFullBtn = getEl("pay-full-btn");
           payFullBtn.onclick = () => {
-            paymentAmountInput.value = installment.amountDue;
+            // Fill with remaining due, not the original installment amount
+            paymentAmountInput.value = computedPending;
             updatePendingDisplay();
             paymentAmountInput.focus();
           };
@@ -1971,7 +1979,7 @@ document.addEventListener("DOMContentLoaded", () => {
             getEl("payment-installment-number").value,
             10
           );
-          const amountPaid = parseFloat(getEl("payment-amount").value);
+          const amountPaidNow = parseFloat(getEl("payment-amount").value) || 0;
 
           const customer = window.allCustomers.active.find(
             (c) => c.id === customerId
@@ -1986,15 +1994,17 @@ document.addEventListener("DOMContentLoaded", () => {
           );
 
           const installment = updatedSchedule[instIndex];
-          const pending = installment.amountDue - amountPaid;
-          installment.amountPaid = amountPaid;
+          const prevPaid = Number(installment.amountPaid || 0);
+          const newTotalPaid = Math.max(0, prevPaid + amountPaidNow);
+          const pending = Math.max(0, Number(installment.amountDue) - newTotalPaid);
+          installment.amountPaid = newTotalPaid;
           installment.pendingAmount = pending;
           installment.paidDate = new Date().toISOString();
 
           if (pending <= 0.001) {
             installment.status = "Paid";
             installment.pendingAmount = 0;
-          } else if (amountPaid > 0) {
+          } else if (newTotalPaid > 0) {
             installment.status = "Pending";
           } else {
             installment.status = "Due";
@@ -2007,7 +2017,7 @@ document.addEventListener("DOMContentLoaded", () => {
             .update({ paymentSchedule: updatedSchedule });
           await logActivity("PAYMENT_RECEIVED", {
             customerName: customer.name,
-            amount: amountPaid,
+            amount: amountPaidNow,
           });
 
           showToast(
