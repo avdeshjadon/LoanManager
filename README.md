@@ -15,7 +15,7 @@ The application moves beyond simple record-keeping, offering an interactive dash
 ## 🚀 Live Application
 
 Experience the full functionality of the application hosted on Vercel:
-**[https://loan-manager-main.vercel.app/](https://loan-manager-main.vercel.app/)**
+**[https://loan-manager-main.vercel.app/](https://loan-manager-nine.vercel.app/)**
 
 ---
 
