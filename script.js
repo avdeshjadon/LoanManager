@@ -908,6 +908,9 @@ document.addEventListener("DOMContentLoaded", () => {
     <div class="profile-stat"><span class="label">First Collection</span><span class="value">${
       details.firstCollectionDate || "N/A"
     }</span></div>
+    <div class="profile-stat"><span class="label">Last Loan Date</span><span class="value">${
+      schedule && schedule.length > 0 ? schedule[schedule.length - 1].dueDate : "N/A"
+    }</span></div>
     <div class="profile-stat"><span class="label">Father's Name</span><span class="value">${
       customer.fatherName || "N/A"
     }</span></div><div class="profile-stat"><span class="label">Address</span><span class="value address-value" style="text-align:left; white-space: normal; word-break: break-word;">${
