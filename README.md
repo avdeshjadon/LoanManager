@@ -154,4 +154,4 @@ For more details, please see the `LICENSE` file.
 
 ---
 
-Built with ❤️ by **Avdesh Jadon** and ***Sachin Yadav* ([@avdeshjadon](https://github.com/avdeshjadon))
+Built with ❤️ by **Avdesh Jadon** and ***Sachin Yadav**
