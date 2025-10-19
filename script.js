@@ -218,14 +218,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const dpTitle = document.getElementById("dp-title");
   const dpPrev = document.getElementById("dp-prev");
   const dpNext = document.getElementById("dp-next");
+  const dpToday = document.getElementById("dp-today");
 
   const pad2 = (n) => String(n).padStart(2, "0");
   const formatForInput = (inputEl, date) => {
     const id = inputEl.id || "";
-    if (id === "customer-dob") {
-      return `${pad2(date.getDate())}-${pad2(date.getMonth() + 1)}-${date.getFullYear()}`;
-    }
-    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+    // Use dd-mm-yyyy for all visible inputs to match your request
+    return `${pad2(date.getDate())}-${pad2(date.getMonth() + 1)}-${date.getFullYear()}`;
   };
   const parseFromInput = (inputEl) => {
     const v = (inputEl.value || "").trim();
@@ -235,10 +234,10 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!m) return new Date();
       return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
     }
-    // yyyy-mm-dd
-    const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    // dd-mm-yyyy
+    const m = v.match(/^(\d{2})-(\d{2})-(\d{4})$/);
     if (!m) return new Date();
-    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
   };
   const openDatepicker = (inputEl) => {
     const base = parseFromInput(inputEl);
@@ -284,6 +283,13 @@ document.addEventListener("DOMContentLoaded", () => {
     renderDatepicker();
   });
   dpOverlay?.addEventListener("click", (e) => { if (e.target === dpOverlay) closeDatepicker(); });
+  dpToday?.addEventListener("click", () => {
+    if (!dpState.target) return;
+    const now = new Date();
+    dpState.target.value = formatForInput(dpState.target, now);
+    dpState.target.dispatchEvent(new Event("change"));
+    closeDatepicker();
+  });
 
   // Attach to date inputs
   document.addEventListener("focusin", (e) => {
@@ -341,11 +347,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const calculateInstallments = (startDateStr, endDateStr, frequency) => {
     if (!startDateStr || !endDateStr) return 0;
-
-    const [sy, sm, sd] = startDateStr.split("-").map(Number);
-    const [ey, em, ed] = endDateStr.split("-").map(Number);
-    const startDate = new Date(sy, sm - 1, sd);
-    const endDate = new Date(ey, em - 1, ed);
+    // Accept dd-mm-yyyy and yyyy-mm-dd; normalize
+    const parseAny = (s) => {
+      const dm = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+      if (dm) return new Date(Number(dm[3]), Number(dm[2]) - 1, Number(dm[1]));
+      const ym = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (ym) return new Date(Number(ym[1]), Number(ym[2]) - 1, Number(ym[3]));
+      const d = new Date(s);
+      return isNaN(+d) ? new Date() : d;
+    };
+    const startDate = parseAny(startDateStr);
+    const endDate = parseAny(endDateStr);
 
     if (endDate < startDate) {
       throw new Error("End date must be on or after the start date.");
@@ -380,9 +392,16 @@ document.addEventListener("DOMContentLoaded", () => {
   // Note: If n = 1, end date is the start date itself (single collection)
   const computeEndDateFromInstallments = (startDateStr, n, frequency) => {
     if (!startDateStr || !n || n <= 0) return startDateStr;
-    const [sy, sm, sd] = startDateStr.split("-").map(Number);
-    const first = new Date(sy, sm - 1, sd);
-    if (n === 1) return first.toISOString().split("T")[0];
+    const parseAny = (s) => {
+      const dm = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+      if (dm) return new Date(Number(dm[3]), Number(dm[2]) - 1, Number(dm[1]));
+      const ym = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (ym) return new Date(Number(ym[1]), Number(ym[2]) - 1, Number(ym[3]));
+      const d = new Date(s);
+      return isNaN(+d) ? new Date() : d;
+    };
+    const first = parseAny(startDateStr);
+  if (n === 1) return formatForInput({ id: "any" }, first);
 
     let end = new Date(first);
     const steps = n - 1; // because first collection occurs on start date
@@ -398,7 +417,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       return startDateStr;
     }
-    return new Date(end).toISOString().split("T")[0];
+    return formatForInput({ id: "any" }, new Date(end));
   };
 
   const generateSimpleInterestSchedule = (totalRepayable, n) => {
@@ -493,6 +512,100 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (error) {
       console.error("Failed to log activity:", error);
     }
+  };
+
+  // CASCADE DELETE HELPERS
+  // Recursively delete all files under a storage folder path
+  const deleteStorageFolder = async (path) => {
+    try {
+      const folderRef = storage.ref(path);
+      const list = await folderRef.listAll();
+      // Delete files in this level
+      await Promise.all(
+        list.items.map(async (itemRef) => {
+          try {
+            await itemRef.delete();
+          } catch (e) {
+            console.warn("Failed to delete storage item:", itemRef.fullPath, e.message || e);
+          }
+        })
+      );
+      // Recurse into subfolders if any
+      for (const prefix of list.prefixes) {
+        await deleteStorageFolder(prefix.fullPath);
+      }
+    } catch (err) {
+      // If folder doesn't exist or listAll fails, ignore silently
+      console.warn("Storage folder cleanup warning:", path, err.message || err);
+    }
+  };
+
+  // Delete all activity logs for a given customer name owned by current user
+  const deleteActivitiesByCustomerName = async (customerName) => {
+    if (!currentUser || !customerName) return 0;
+    try {
+      const snap = await db
+        .collection("activities")
+        .where("owner_uid", "==", currentUser.uid)
+        .where("details.customerName", "==", customerName)
+        .get();
+      if (snap.empty) return 0;
+      const batch = db.batch();
+      snap.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+      return snap.size;
+    } catch (e) {
+      console.warn("Activity cleanup warning for", customerName, e.message || e);
+      return 0;
+    }
+  };
+
+  // Delete a single customer document + its KYC folder; optionally cleanup activities by name
+  const deleteSingleCustomerCascade = async (customerId, customerData) => {
+    try {
+      let data = customerData;
+      if (!data) {
+        const doc = await db.collection("customers").doc(customerId).get();
+        data = doc.exists ? doc.data() : null;
+      }
+      const customerName = data?.name;
+      // Delete storage files under this customer's folder
+      await deleteStorageFolder(`kyc/${currentUser.uid}/${customerId}`);
+      // Delete the Firestore document
+      await db.collection("customers").doc(customerId).delete();
+      // Best-effort: also remove activities for this customer name
+      if (customerName) await deleteActivitiesByCustomerName(customerName);
+      return { name: customerName };
+    } catch (e) {
+      throw e;
+    }
+  };
+
+  // Delete ALL records (loans) for a given customer name across statuses
+  const deleteAllCustomerRecordsByName = async (customerName) => {
+    if (!currentUser || !customerName) return { count: 0 };
+    const snap = await db
+      .collection("customers")
+      .where("owner", "==", currentUser.uid)
+      .where("name", "==", customerName)
+      .get();
+    if (snap.empty) return { count: 0 };
+    // Delete each doc + its storage folder
+    let deleted = 0;
+    for (const doc of snap.docs) {
+      try {
+        await deleteStorageFolder(`kyc/${currentUser.uid}/${doc.id}`);
+      } catch (_) {}
+      try {
+        await doc.ref.delete();
+        deleted++;
+      } catch (e) {
+        console.warn("Failed to delete customer doc:", doc.id, e.message || e);
+      }
+    }
+    // Remove activities tied to this name
+    await deleteActivitiesByCustomerName(customerName);
+    return { count: deleted };
   };
 
   const calculateKeyStats = (activeLoans, settledLoans) => {
@@ -1569,14 +1682,14 @@ document.addEventListener("DOMContentLoaded", () => {
           const customerId = button.dataset.id;
           showConfirmation(
             "Delete Customer?",
-            "This will permanently delete this customer and all their loan data. This action cannot be undone.",
+            "This will permanently delete this customer, their KYC files, and all related activity logs. This action cannot be undone.",
             async () => {
               try {
-                await db.collection("customers").doc(customerId).delete();
+                await deleteSingleCustomerCascade(customerId);
                 showToast(
                   "success",
                   "Customer Deleted",
-                  "The customer record has been permanently removed."
+                  "All customer data and files have been removed."
                 );
                 await loadAndRenderAll();
               } catch (e) {
@@ -1587,7 +1700,7 @@ document.addEventListener("DOMContentLoaded", () => {
         } else if (button.id === "delete-all-settled-btn") {
           showConfirmation(
             "Delete All Settled Accounts?",
-            "This will permanently delete ALL settled and refinanced accounts from your records. This action cannot be undone. Are you sure?",
+            "This will permanently delete ALL settled and refinanced accounts, their KYC files, and related activity logs. This action cannot be undone. Are you sure?",
             async () => {
               const btn = getEl("delete-all-settled-btn");
               toggleButtonLoading(btn, true, "Deleting...");
@@ -1607,13 +1720,15 @@ document.addEventListener("DOMContentLoaded", () => {
                   toggleButtonLoading(btn, false);
                   return;
                 }
-
-                const batch = db.batch();
-                querySnapshot.docs.forEach((doc) => {
-                  batch.delete(doc.ref);
-                });
-
-                await batch.commit();
+                // Delete each settled customer and its files
+                for (const doc of querySnapshot.docs) {
+                  const data = doc.data();
+                  try {
+                    await deleteSingleCustomerCascade(doc.id, data);
+                  } catch (e) {
+                    console.warn("Failed to delete settled record:", doc.id, e.message || e);
+                  }
+                }
                 showToast(
                   "success",
                   "Deletion Complete",
@@ -1806,7 +1921,17 @@ document.addEventListener("DOMContentLoaded", () => {
           getEl("new-loan-customer-id").value = customerId;
           getEl("new-loan-form").reset();
 
-          setAutomaticNewLoanFirstDate();
+          // Default Loan Given Date to today and set first collection accordingly
+          const todayStr = formatForInput({id:'any'}, new Date());
+          const nlgd = getEl("new-loan-given-date");
+          if (nlgd) nlgd.value = todayStr;
+          // Derive first date from given + frequency
+          const freq = getEl("new-loan-frequency").value;
+          let base = new Date();
+          if (freq === "daily") base.setDate(base.getDate() + 1);
+          else if (freq === "weekly") base.setDate(base.getDate() + 7);
+          else if (freq === "monthly") base.setMonth(base.getMonth() + 1);
+          getEl("new-loan-start-date").value = formatForInput({id:'any'}, base);
 
           getEl("new-loan-installment-preview").classList.add("hidden");
           getEl("new-loan-modal").classList.add("show");
@@ -2036,11 +2161,12 @@ document.addEventListener("DOMContentLoaded", () => {
             if (isNaN(p) || isNaN(r) || isNaN(nBase) || !firstDate)
               throw new Error("Please fill all loan detail fields correctly.");
 
-            const loanGivenDate = getEl("loan-given-date")?.value || new Date().toISOString().split("T")[0];
+            const loanGivenDate = getEl("loan-given-date")?.value || new Date();
+            const lgdStr = typeof loanGivenDate === 'string' ? loanGivenDate : formatForInput({id:'any'}, loanGivenDate);
 
             // Keep total interest constant using provided dates for interest calculation
             const totalRepayable =
-              p + calculateTotalInterest(p, r, loanGivenDate, endDate);
+              p + calculateTotalInterest(p, r, lgdStr, endDate);
 
             // If user provided a custom per-installment amount, recompute number of installments and end date
             const customAmtInput = getEl("custom-installment-amount");
@@ -2068,7 +2194,7 @@ document.addEventListener("DOMContentLoaded", () => {
               interestRate: r,
               installments: chosenN,
               frequency: freq,
-              loanGivenDate: loanGivenDate,
+              loanGivenDate: lgdStr,
               firstCollectionDate: firstDate,
               // Keep original endDate here so interest stays constant across the app
               loanEndDate: endDate,
@@ -2234,7 +2360,7 @@ document.addEventListener("DOMContentLoaded", () => {
           if (isNaN(p) || isNaN(r) || isNaN(nBase) || !firstDate || !endDate)
             throw new Error("Please fill all new loan fields correctly.");
 
-          const loanGivenDate = getEl("loan-given-date")?.value || new Date().toISOString().split("T")[0];
+          const loanGivenDate = getEl("new-loan-given-date")?.value || getEl("loan-given-date")?.value || formatForInput({id:'any'}, new Date());
 
           // Keep total interest same based on provided range
           const totalRepayable = p + calculateTotalInterest(p, r, loanGivenDate, endDate);

@@ -138,7 +138,10 @@
         <div class="datepicker-header">
           <button type="button" id="dp-prev">◀</button>
           <div id="dp-title" style="font-weight:600"></div>
-          <button type="button" id="dp-next">▶</button>
+          <div style="display:flex; gap:.5rem; align-items:center">
+            <button type="button" id="dp-today">Today</button>
+            <button type="button" id="dp-next">▶</button>
+          </div>
         </div>
         <div class="datepicker-grid" id="dp-grid"></div>
       </div>
@@ -493,7 +496,7 @@
                       type="text"
                       id="first-collection-date"
                       class="form-control date-input"
-                      placeholder="yyyy-mm-dd"
+                      placeholder="dd-mm-yyyy"
                       required
                     />
                   </div>
@@ -503,7 +506,7 @@
                       type="text"
                       id="loan-end-date"
                       class="form-control date-input"
-                      placeholder="yyyy-mm-dd"
+                      placeholder="dd-mm-yyyy"
                       required
                     />
                   </div>
@@ -515,7 +518,7 @@
                       type="text"
                       id="loan-given-date"
                       class="form-control date-input"
-                      placeholder="yyyy-mm-dd"
+                      placeholder="dd-mm-yyyy"
                       required
                     />
                   </div>
@@ -679,7 +682,7 @@
                   type="text"
                   id="new-loan-start-date"
                   class="form-control date-input"
-                  placeholder="yyyy-mm-dd"
+                  placeholder="dd-mm-yyyy"
                   required
                 />
               </div>
@@ -689,7 +692,19 @@
                   type="text"
                   id="new-loan-end-date"
                   class="form-control date-input"
-                  placeholder="yyyy-mm-dd"
+                  placeholder="dd-mm-yyyy"
+                  required
+                />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group" style="width: 100%">
+                <label for="new-loan-given-date">Loan Given Date</label>
+                <input
+                  type="text"
+                  id="new-loan-given-date"
+                  class="form-control date-input"
+                  placeholder="dd-mm-yyyy"
                   required
                 />
               </div>
