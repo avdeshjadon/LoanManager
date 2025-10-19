@@ -1141,6 +1141,17 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const { paymentSchedule: schedule, loanDetails: details } = customer;
+    // Helper to format any stored date (dd-mm-yyyy or yyyy-mm-dd) into dd-mm-yyyy for display
+    const dispDate = (val) => {
+      if (!val) return "N/A";
+      try {
+        const d = parseDateFlexible(val);
+        if (!d || isNaN(+d)) return "N/A";
+        return formatForInput({ id: "any" }, d);
+      } catch (_) {
+        return "N/A";
+      }
+    };
 
     const totalInterest = calculateTotalInterest(
       details.principal,
@@ -1183,16 +1194,16 @@ document.addEventListener("DOMContentLoaded", () => {
       customer.phone || "N/A"
     }</p></div><div class="profile-section"><h4>Personal & Loan Details</h4>
     <div class="profile-stat"><span class="label">Loan Given Date</span><span class="value">${
-      details.loanGivenDate || "N/A"
+      dispDate(details.loanGivenDate)
     }</span></div>
     <div class="profile-stat"><span class="label">Date of Birth</span><span class="value">${
-      customer.dob || "N/A"
+      dispDate(customer.dob)
     }</span></div>
     <div class="profile-stat"><span class="label">First Collection</span><span class="value">${
-      details.firstCollectionDate || "N/A"
+      dispDate(details.firstCollectionDate)
     }</span></div>
     <div class="profile-stat"><span class="label">Last Loan Date</span><span class="value">${
-      schedule && schedule.length > 0 ? schedule[schedule.length - 1].dueDate : "N/A"
+      dispDate(schedule && schedule.length > 0 ? schedule[schedule.length - 1].dueDate : null)
     }</span></div>
     </div>
     <div class="profile-section"><h4>Customer Loan Totals</h4>

@@ -43,15 +43,32 @@
   border: 1px solid var(--border-color);
   cursor: pointer;
   position: relative;
+  color: var(--text-gray);
 }
 .dp-nav-btn::before {
   content: '';
   position: absolute; inset: 0; margin: auto; width: 0; height: 0;
   border-top: 6px solid transparent; border-bottom: 6px solid transparent;
+  border-style: solid;
+  z-index: 1;
 }
-/* left/right arrows using first/last nav button selectors */
-.datepicker-header > .dp-nav-btn:first-child::before { border-right: 8px solid var(--text-gray); left: 12px; }
-.datepicker-header > .dp-actions .dp-nav-btn::before { border-left: 8px solid var(--text-gray); right: 12px; }
+/* Explicitly target left/right arrow buttons to avoid structural selector issues */
+#dp-prev.dp-nav-btn::before { content: none; }
+#dp-prev.dp-nav-btn::after {
+  content: '\2039'; /* ‹ chevron */
+  position: absolute;
+  left: 0; right: 0; top: 0; bottom: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: currentColor; font-size: 16px; font-weight: 800;
+}
+#dp-next.dp-nav-btn::before { content: none; }
+#dp-next.dp-nav-btn::after {
+  content: '\203A'; /* › chevron */
+  position: absolute;
+  left: 0; right: 0; top: 0; bottom: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: currentColor; font-size: 16px; font-weight: 800;
+}
 .dp-today-btn {
   padding: .4rem .65rem;
   border-radius: 8px;
