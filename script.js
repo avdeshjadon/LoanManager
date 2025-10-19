@@ -14,32 +14,46 @@ const storage = firebase.storage();
 
 window.allCustomers = { active: [], settled: [] };
 
+// Parse dd-mm-yyyy or yyyy-mm-dd or Date
+const parseDateFlexible = (input) => {
+  if (input instanceof Date) return input;
+  if (typeof input === "number") return new Date(input);
+  if (typeof input !== "string") {
+    const d = new Date(input);
+    return d;
+  }
+  const s = input.trim();
+  // dd-mm-yyyy
+  let m = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  // yyyy-mm-dd
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const d = new Date(s);
+  return d;
+};
+
 const calculateTotalInterest = (
   principal,
   monthlyRate,
-  loanGivenDateStr,
-  loanEndDateStr
+  loanGivenDate,
+  loanEndDate
 ) => {
-  if (!principal || !monthlyRate || !loanGivenDateStr || !loanEndDateStr)
-    return 0;
-
+  if (!principal || !monthlyRate || !loanGivenDate || !loanEndDate) return 0;
   const monthlyRateDecimal = monthlyRate / 100;
+  const start = parseDateFlexible(loanGivenDate);
+  const end = parseDateFlexible(loanEndDate);
+  if (!(start instanceof Date) || isNaN(+start)) return 0;
+  if (!(end instanceof Date) || isNaN(+end)) return 0;
+  if (end <= start) return 0;
 
-  const d1 = new Date(loanGivenDateStr);
-  const d2 = new Date(loanEndDateStr);
-
-  let months;
-  months = (d2.getFullYear() - d1.getFullYear()) * 12;
-  months -= d1.getMonth();
-  months += d2.getMonth();
-
-  if (d2.getDate() < d1.getDate()) {
-    months--;
-  }
-
-  const termInMonths = months < 0 ? 0 : months;
-
-  const totalInterest = principal * monthlyRateDecimal * termInMonths;
+  // Normalize to midnight to avoid DST issues
+  const s = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const e = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  const diffMs = e - s;
+  const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  const monthsBlocks = Math.ceil(days / 30);
+  const totalInterest = principal * monthlyRateDecimal * monthsBlocks;
   return totalInterest;
 };
 
@@ -49,33 +63,24 @@ const calculateTotalInterestByTerm = (
   numberOfInstallments,
   frequency
 ) => {
-  if (
-    !principal ||
-    !monthlyRate ||
-    !numberOfInstallments ||
-    numberOfInstallments <= 0
-  )
-    return 0;
-
+  if (!principal || !monthlyRate || !numberOfInstallments || numberOfInstallments <= 0) return 0;
   const monthlyRateDecimal = monthlyRate / 100;
-  let termInMonths = 0;
-
+  let days = 0;
   switch (frequency) {
     case "monthly":
-      termInMonths = numberOfInstallments;
+      days = numberOfInstallments * 30; // assume 30-day months
       break;
     case "weekly":
-      termInMonths = numberOfInstallments / 4.33;
+      days = numberOfInstallments * 7;
       break;
     case "daily":
-      termInMonths = numberOfInstallments / 30.44;
+      days = numberOfInstallments;
       break;
     default:
       return 0;
   }
-
-  const totalInterest = principal * monthlyRateDecimal * termInMonths;
-  return totalInterest;
+  const monthsBlocks = Math.ceil(days / 30);
+  return principal * monthlyRateDecimal * monthsBlocks;
 };
 
 const formatCurrency = (amount) => {
@@ -616,18 +621,16 @@ document.addEventListener("DOMContentLoaded", () => {
     [...activeLoans, ...settledLoans].forEach((c) => {
       if (c.loanDetails && c.paymentSchedule) {
         totalPrincipal += c.loanDetails.principal;
-
-        const todayStr = new Date().toISOString().split("T")[0];
-        const endBound = (c.status === "settled")
-          ? c.loanDetails.loanEndDate
-          : (todayStr < c.loanDetails.loanEndDate
-              ? todayStr
-              : c.loanDetails.loanEndDate);
+        const today = new Date();
+        const endCandidate = parseDateFlexible(c.loanDetails.loanEndDate);
+        const endBoundDate = (c.status === "settled")
+          ? endCandidate
+          : (today < endCandidate ? today : endCandidate);
         const totalInterest = calculateTotalInterest(
           c.loanDetails.principal,
           c.loanDetails.interestRate,
           c.loanDetails.loanGivenDate,
-          endBound
+          endBoundDate
         );
         const totalRepayable = c.loanDetails.principal + totalInterest;
         const totalPaid = c.paymentSchedule.reduce(
@@ -1282,7 +1285,8 @@ document.addEventListener("DOMContentLoaded", () => {
       if (n <= 0) {
         throw new Error("Invalid date range for the selected frequency.");
       }
-      const loanGivenDate = new Date().toISOString().split("T")[0];
+      // Use the selected Loan Given Date if provided
+      const loanGivenDate = getEl("loan-given-date")?.value || new Date();
       const totalInterest = calculateTotalInterest(
         p,
         r,
@@ -1381,7 +1385,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (n <= 0) {
         throw new Error("Invalid date range for the selected frequency.");
       }
-      const loanGivenDate = new Date().toISOString().split("T")[0];
+      const loanGivenDate = getEl("new-loan-given-date")?.value || getEl("loan-given-date")?.value || new Date();
       const totalInterest = calculateTotalInterest(
         p,
         r,
@@ -1463,7 +1467,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const firstDateInput = getEl("first-collection-date");
     const givenInput = getEl("loan-given-date");
     const base = givenInput && givenInput.value
-      ? new Date(givenInput.value)
+      ? parseDateFlexible(givenInput.value)
       : new Date();
 
     // First collection is after the loan is given
@@ -1474,7 +1478,8 @@ document.addEventListener("DOMContentLoaded", () => {
     } else if (freq === "monthly") {
       base.setMonth(base.getMonth() + 1);
     }
-    firstDateInput.value = base.toISOString().split("T")[0];
+    // Keep dd-mm-yyyy format in UI
+    firstDateInput.value = formatForInput({ id: "any" }, base);
     firstDateInput.dispatchEvent(new Event("change"));
   }
 
@@ -1493,7 +1498,7 @@ document.addEventListener("DOMContentLoaded", () => {
         today.setMonth(today.getMonth() + 1);
         break;
     }
-    firstDateInput.value = today.toISOString().split("T")[0];
+    firstDateInput.value = formatForInput({ id: "any" }, today);
     firstDateInput.dispatchEvent(new Event("change"));
   }
 
