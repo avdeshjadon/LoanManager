@@ -224,6 +224,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const dpPrev = document.getElementById("dp-prev");
   const dpNext = document.getElementById("dp-next");
   const dpToday = document.getElementById("dp-today");
+  const dpYear = document.getElementById("dp-year");
+  const dpMonth = document.getElementById("dp-month");
 
   const pad2 = (n) => String(n).padStart(2, "0");
   const formatForInput = (inputEl, date) => {
@@ -247,6 +249,40 @@ document.addEventListener("DOMContentLoaded", () => {
   const openDatepicker = (inputEl) => {
     const base = parseFromInput(inputEl);
     dpState = { open: true, target: inputEl, year: base.getFullYear(), month: base.getMonth() };
+    // Show year/month selects only for DOB
+    const isDob = inputEl.id === "customer-dob";
+    if (dpYear && dpMonth) {
+      dpYear.style.display = isDob ? "inline-block" : "none";
+      dpMonth.style.display = isDob ? "inline-block" : "none";
+      if (isDob) {
+        // Populate years 1900..current year
+        const currentYear = new Date().getFullYear();
+        const startYear = 1900;
+        const prevYVal = dpYear.value;
+        const prevMVal = dpMonth.value;
+        dpYear.innerHTML = "";
+        for (let y = currentYear; y >= startYear; y--) {
+          const opt = document.createElement("option");
+          opt.value = String(y);
+          opt.textContent = String(y);
+          dpYear.appendChild(opt);
+        }
+        const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+        dpMonth.innerHTML = "";
+        months.forEach((m, idx) => {
+          const opt = document.createElement("option");
+          opt.value = String(idx);
+          opt.textContent = m;
+          dpMonth.appendChild(opt);
+        });
+        // Set selects to current state
+        dpYear.value = String(dpState.year);
+        dpMonth.value = String(dpState.month);
+        // Restore previous if existed and valid
+        if (prevYVal && dpYear.querySelector(`option[value="${prevYVal}"]`)) dpYear.value = prevYVal;
+        if (prevMVal && dpMonth.querySelector(`option[value="${prevMVal}"]`)) dpMonth.value = prevMVal;
+      }
+    }
     renderDatepicker();
     dpOverlay.style.display = "flex";
   };
@@ -261,6 +297,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const startDow = (first.getDay() + 6) % 7; // make Monday=0
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     dpTitle.textContent = first.toLocaleString(undefined, { month: 'long', year: 'numeric' });
+    // Sync header selects if visible
+    if (dpYear && dpMonth && dpYear.style.display !== "none") {
+      dpYear.value = String(year);
+      dpMonth.value = String(month);
+    }
     const dows = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
     dpGrid.innerHTML = dows.map(d => `<div class="datepicker-cell datepicker-dow">${d}</div>`).join("");
     for (let i = 0; i < startDow; i++) dpGrid.innerHTML += `<div></div>`;
@@ -294,6 +335,15 @@ document.addEventListener("DOMContentLoaded", () => {
     dpState.target.value = formatForInput(dpState.target, now);
     dpState.target.dispatchEvent(new Event("change"));
     closeDatepicker();
+  });
+  // Year/Month change handlers for DOB picker
+  dpYear?.addEventListener("change", () => {
+    const y = Number(dpYear.value);
+    if (!isNaN(y)) { dpState.year = y; renderDatepicker(); }
+  });
+  dpMonth?.addEventListener("change", () => {
+    const m = Number(dpMonth.value);
+    if (!isNaN(m)) { dpState.month = m; renderDatepicker(); }
   });
 
   // Attach to date inputs
