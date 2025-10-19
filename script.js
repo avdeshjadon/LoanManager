@@ -1659,7 +1659,10 @@ document.addEventListener("DOMContentLoaded", () => {
           getEl("customer-form").reset();
           getEl("customer-id").value = "";
           getEl("customer-form-modal-title").textContent = "Add New Customer";
-
+          // Default Loan Given Date to today and derive first collection
+          const todayStr = new Date().toISOString().split("T")[0];
+          const lgd = getEl("loan-given-date");
+          if (lgd) lgd.value = todayStr;
           setAutomaticFirstDate();
 
           getEl("personal-info-fields").style.display = "block";
@@ -2380,11 +2383,9 @@ document.addEventListener("DOMContentLoaded", () => {
     loanDetailFields.forEach((id) => {
       const element = getEl(id);
       if (element) {
-        if (element.type === "date" || element.tagName === "SELECT") {
-          element.addEventListener("change", updateInstallmentPreview);
-        } else {
-          element.addEventListener("input", updateInstallmentPreview);
-        }
+        // Support both typed and programmatic changes from datepicker
+        element.addEventListener("input", updateInstallmentPreview);
+        element.addEventListener("change", updateInstallmentPreview);
       }
     });
 
@@ -2398,11 +2399,8 @@ document.addEventListener("DOMContentLoaded", () => {
     newLoanDetailFields.forEach((id) => {
       const element = getEl(id);
       if (element) {
-        if (element.type === "date" || element.tagName === "SELECT") {
-          element.addEventListener("change", updateNewLoanInstallmentPreview);
-        } else {
-          element.addEventListener("input", updateNewLoanInstallmentPreview);
-        }
+        element.addEventListener("input", updateNewLoanInstallmentPreview);
+        element.addEventListener("change", updateNewLoanInstallmentPreview);
       }
     });
 
