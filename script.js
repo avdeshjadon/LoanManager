@@ -216,16 +216,16 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  // THEMED DATEPICKER
-  let dpState = { open: false, target: null, year: 0, month: 0 };
+  // THEMED DATEPICKER (Year → Month → Day flow)
+  // view: 'years' | 'months' | 'days'
+  let dpState = { open: false, target: null, year: 0, month: 0, view: 'days' };
   const dpOverlay = document.getElementById("datepicker-overlay");
   const dpGrid = document.getElementById("dp-grid");
   const dpTitle = document.getElementById("dp-title");
   const dpPrev = document.getElementById("dp-prev");
   const dpNext = document.getElementById("dp-next");
   const dpToday = document.getElementById("dp-today");
-  const dpYear = document.getElementById("dp-year");
-  const dpMonth = document.getElementById("dp-month");
+  // removed legacy dropdowns
 
   const pad2 = (n) => String(n).padStart(2, "0");
   const formatForInput = (inputEl, date) => {
@@ -248,41 +248,16 @@ document.addEventListener("DOMContentLoaded", () => {
   };
   const openDatepicker = (inputEl) => {
     const base = parseFromInput(inputEl);
-    dpState = { open: true, target: inputEl, year: base.getFullYear(), month: base.getMonth() };
-    // Show year/month selects only for DOB
-    const isDob = inputEl.id === "customer-dob";
-    if (dpYear && dpMonth) {
-      dpYear.style.display = isDob ? "inline-block" : "none";
-      dpMonth.style.display = isDob ? "inline-block" : "none";
-      if (isDob) {
-        // Populate years 1900..current year
-        const currentYear = new Date().getFullYear();
-        const startYear = 1900;
-        const prevYVal = dpYear.value;
-        const prevMVal = dpMonth.value;
-        dpYear.innerHTML = "";
-        for (let y = currentYear; y >= startYear; y--) {
-          const opt = document.createElement("option");
-          opt.value = String(y);
-          opt.textContent = String(y);
-          dpYear.appendChild(opt);
-        }
-        const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-        dpMonth.innerHTML = "";
-        months.forEach((m, idx) => {
-          const opt = document.createElement("option");
-          opt.value = String(idx);
-          opt.textContent = m;
-          dpMonth.appendChild(opt);
-        });
-        // Set selects to current state
-        dpYear.value = String(dpState.year);
-        dpMonth.value = String(dpState.month);
-        // Restore previous if existed and valid
-        if (prevYVal && dpYear.querySelector(`option[value="${prevYVal}"]`)) dpYear.value = prevYVal;
-        if (prevMVal && dpMonth.querySelector(`option[value="${prevMVal}"]`)) dpMonth.value = prevMVal;
-      }
-    }
+    const isDob = inputEl.id === 'customer-dob';
+    dpState = {
+      open: true,
+      target: inputEl,
+      year: base.getFullYear(),
+      month: base.getMonth(),
+      view: isDob ? 'years' : 'days',
+    };
+    // Title is only clickable (to go up a level) for DOB picker
+    if (dpTitle) dpTitle.classList.toggle('clickable', isDob);
     renderDatepicker();
     dpOverlay.style.display = "flex";
   };
@@ -292,19 +267,50 @@ document.addEventListener("DOMContentLoaded", () => {
     dpOverlay.style.display = "none";
   };
   const renderDatepicker = () => {
-    const { year, month } = dpState;
+    const { year, month, view } = dpState;
+    dpGrid.classList.remove('dp-grid-days','dp-grid-months','dp-grid-years');
+    if (view === 'years') {
+      // Show 16 years grid around current 'year'
+      dpTitle.textContent = `${year}`;
+      dpGrid.classList.add('dp-grid-years');
+      dpGrid.innerHTML = '';
+      const start = Math.floor(year / 16) * 16 - 3; // small back buffer
+      for (let y = start; y < start + 20; y++) {
+        const cell = document.createElement('div');
+        cell.className = 'datepicker-cell';
+        cell.textContent = String(y);
+        if (y === year) cell.classList.add('datepicker-selected');
+        cell.addEventListener('click', () => { dpState.year = y; dpState.view = 'months'; renderDatepicker(); });
+        dpGrid.appendChild(cell);
+      }
+      return;
+    }
+
+    if (view === 'months') {
+      dpTitle.textContent = `${year}`;
+      dpGrid.classList.add('dp-grid-months');
+      dpGrid.innerHTML = '';
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      months.forEach((label, idx) => {
+        const cell = document.createElement('div');
+        cell.className = 'datepicker-cell';
+        cell.textContent = label;
+        if (idx === month) cell.classList.add('datepicker-selected');
+        cell.addEventListener('click', () => { dpState.month = idx; dpState.view = 'days'; renderDatepicker(); });
+        dpGrid.appendChild(cell);
+      });
+      return;
+    }
+
+    // days view
     const first = new Date(year, month, 1);
-    const startDow = (first.getDay() + 6) % 7; // make Monday=0
+    const startDow = (first.getDay() + 6) % 7; // Monday=0
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     dpTitle.textContent = first.toLocaleString(undefined, { month: 'long', year: 'numeric' });
-    // Sync header selects if visible
-    if (dpYear && dpMonth && dpYear.style.display !== "none") {
-      dpYear.value = String(year);
-      dpMonth.value = String(month);
-    }
+    dpGrid.classList.add('dp-grid-days');
     const dows = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
     dpGrid.innerHTML = dows.map(d => `<div class="datepicker-cell datepicker-dow">${d}</div>`).join("");
-    for (let i = 0; i < startDow; i++) dpGrid.innerHTML += `<div></div>`;
+    for (let i = 0; i < startDow; i++) dpGrid.innerHTML += `<div class="datepicker-cell datepicker-ghost"></div>`;
     for (let d = 1; d <= daysInMonth; d++) {
       const btn = document.createElement("div");
       btn.className = "datepicker-cell";
@@ -319,31 +325,38 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
   dpPrev?.addEventListener("click", () => {
-    dpState.month -= 1;
-    if (dpState.month < 0) { dpState.month = 11; dpState.year -= 1; }
+    const isDob = dpState.target && dpState.target.id === 'customer-dob';
+    if (isDob && dpState.view === 'years') { dpState.year -= 16; }
+    else if (isDob && dpState.view === 'months') { dpState.year -= 1; }
+    else { dpState.month -= 1; if (dpState.month < 0) { dpState.month = 11; dpState.year -= 1; } }
     renderDatepicker();
   });
   dpNext?.addEventListener("click", () => {
-    dpState.month += 1;
-    if (dpState.month > 11) { dpState.month = 0; dpState.year += 1; }
+    const isDob = dpState.target && dpState.target.id === 'customer-dob';
+    if (isDob && dpState.view === 'years') { dpState.year += 16; }
+    else if (isDob && dpState.view === 'months') { dpState.year += 1; }
+    else { dpState.month += 1; if (dpState.month > 11) { dpState.month = 0; dpState.year += 1; } }
     renderDatepicker();
   });
   dpOverlay?.addEventListener("click", (e) => { if (e.target === dpOverlay) closeDatepicker(); });
   dpToday?.addEventListener("click", () => {
     if (!dpState.target) return;
     const now = new Date();
+    // Jump to days view for current month/year
+    dpState.year = now.getFullYear();
+    dpState.month = now.getMonth();
+    dpState.view = 'days';
     dpState.target.value = formatForInput(dpState.target, now);
     dpState.target.dispatchEvent(new Event("change"));
     closeDatepicker();
   });
-  // Year/Month change handlers for DOB picker
-  dpYear?.addEventListener("change", () => {
-    const y = Number(dpYear.value);
-    if (!isNaN(y)) { dpState.year = y; renderDatepicker(); }
-  });
-  dpMonth?.addEventListener("change", () => {
-    const m = Number(dpMonth.value);
-    if (!isNaN(m)) { dpState.month = m; renderDatepicker(); }
+  // Title click: go up a level (days -> months -> years)
+  dpTitle?.addEventListener('click', () => {
+    // Only allow navigating up for DOB field
+    if (!dpState.target || dpState.target.id !== 'customer-dob') return;
+    if (dpState.view === 'days') dpState.view = 'months';
+    else if (dpState.view === 'months') dpState.view = 'years';
+    renderDatepicker();
   });
 
   // Attach to date inputs

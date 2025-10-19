@@ -136,14 +136,11 @@
     <div class="datepicker-overlay" id="datepicker-overlay" aria-hidden="true">
       <div class="datepicker" role="dialog" aria-modal="true">
         <div class="datepicker-header">
-          <button type="button" id="dp-prev">◀</button>
-          <div id="dp-title" style="font-weight:600"></div>
-          <div style="display:flex; gap:.5rem; align-items:center">
-            <!-- These selects are shown only for DOB picker -->
-            <select id="dp-year" style="display:none"></select>
-            <select id="dp-month" style="display:none"></select>
-            <button type="button" id="dp-today">Today</button>
-            <button type="button" id="dp-next">▶</button>
+          <button type="button" id="dp-prev" class="dp-nav-btn" aria-label="Previous"></button>
+          <div id="dp-title" class="dp-title" title="Click to change view"></div>
+          <div class="dp-actions">
+            <button type="button" id="dp-today" class="dp-today-btn">Today</button>
+            <button type="button" id="dp-next" class="dp-nav-btn" aria-label="Next"></button>
           </div>
         </div>
         <div class="datepicker-grid" id="dp-grid"></div>
