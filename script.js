@@ -1511,6 +1511,9 @@ document.addEventListener("DOMContentLoaded", () => {
         const newEnd = computeEndDateFromInstallments(firstDate, newN, freq);
         hiddenN.value = String(newN);
         hiddenEnd.value = newEnd;
+    // Keep the visible end-date field in sync with the computed end date
+    const endDateField = getEl("new-loan-end-date");
+    if (endDateField) endDateField.value = newEnd;
   const remainderCents = totalCents - chosenCents * (newN - 1);
   const lastAmt = +(remainderCents / 100).toFixed(2);
   const lastInfo = lastAmt !== chosen ? ` &nbsp;|&nbsp; <span>Last: <strong>${formatCurrency(lastAmt)}</strong></span>` : "";
@@ -1557,20 +1560,27 @@ document.addEventListener("DOMContentLoaded", () => {
   function setAutomaticNewLoanFirstDate() {
     const freq = getEl("new-loan-frequency").value;
     const firstDateInput = getEl("new-loan-start-date");
-    const today = new Date();
+    const givenInput = getEl("new-loan-given-date");
+    const base = givenInput && givenInput.value
+      ? parseDateFlexible(givenInput.value)
+      : new Date();
 
-    switch (freq) {
-      case "daily":
-        break;
-      case "weekly":
-        today.setDate(today.getDate() + 7);
-        break;
-      case "monthly":
-        today.setMonth(today.getMonth() + 1);
-        break;
+    // First collection after loan given
+    if (freq === "daily") {
+      base.setDate(base.getDate() + 1);
+    } else if (freq === "weekly") {
+      base.setDate(base.getDate() + 7);
+    } else if (freq === "monthly") {
+      base.setMonth(base.getMonth() + 1);
     }
-    firstDateInput.value = formatForInput({ id: "any" }, today);
+    firstDateInput.value = formatForInput({ id: "any" }, base);
     firstDateInput.dispatchEvent(new Event("change"));
+    // Also propose a default end date with 2 installments window
+    try {
+      const endDefault = computeEndDateFromInstallments(firstDateInput.value, 2, freq);
+      const endInput = getEl("new-loan-end-date");
+      if (endInput) endInput.value = endDefault;
+    } catch (_) {}
   }
 
   function initializeEventListeners() {
@@ -1859,6 +1869,7 @@ document.addEventListener("DOMContentLoaded", () => {
           getEl("personal-info-fields").style.display = "block";
           getEl("kyc-info-fields").style.display = "block";
           getEl("loan-details-fields").style.display = "block";
+          if (typeof setLoanDetailFieldsRequired === 'function') setLoanDetailFieldsRequired(true);
           getEl("installment-preview").classList.add("hidden");
 
           document
@@ -1890,6 +1901,7 @@ document.addEventListener("DOMContentLoaded", () => {
           getEl("personal-info-fields").style.display = "block";
           getEl("kyc-info-fields").style.display = "block";
           getEl("loan-details-fields").style.display = "none";
+          if (typeof setLoanDetailFieldsRequired === 'function') setLoanDetailFieldsRequired(false);
           getEl("installment-preview").classList.add("hidden");
 
           getEl("customer-form-modal-title").textContent = "Edit Customer Info";
@@ -2008,6 +2020,16 @@ document.addEventListener("DOMContentLoaded", () => {
           else if (freq === "weekly") base.setDate(base.getDate() + 7);
           else if (freq === "monthly") base.setMonth(base.getMonth() + 1);
           getEl("new-loan-start-date").value = formatForInput({id:'any'}, base);
+
+          // Also set a sensible default Loan End Date based on one more period (n = 2)
+          try {
+            const startStr = getEl("new-loan-start-date").value;
+            const endDefault = computeEndDateFromInstallments(startStr, 2, freq);
+            const endInput = getEl("new-loan-end-date");
+            if (endInput) endInput.value = endDefault;
+          } catch (_) {
+            // If anything fails, leave end date empty; user can set it manually
+          }
 
           getEl("new-loan-installment-preview").classList.add("hidden");
           getEl("new-loan-modal").classList.add("show");
@@ -2135,6 +2157,12 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
       if (form.id === "customer-form") {
+        // Enforce HTML validation first
+        if (!form.checkValidity()) {
+          form.reportValidity();
+          return;
+        }
+        let reopenAfterSaveId = null;
         const id = getEl("customer-id").value;
         const saveBtn = getEl("customer-modal-save");
         toggleButtonLoading(saveBtn, true, id ? "Updating..." : "Saving...");
@@ -2143,7 +2171,12 @@ document.addEventListener("DOMContentLoaded", () => {
           const customerData = {
             name: getEl("customer-name").value,
             phone: getEl("customer-phone").value,
-            dob: getEl("customer-dob").value,
+            dob: (() => {
+              const raw = getEl("customer-dob").value;
+              if (!raw) return "";
+              const d = parseDateFlexible(raw);
+              return isNaN(+d) ? raw : formatForInput({ id: "any" }, d);
+            })(),
             fatherName: getEl("customer-father-name").value,
             address: getEl("customer-address").value,
             whatsapp: getEl("customer-whatsapp").value,
@@ -2203,6 +2236,7 @@ document.addEventListener("DOMContentLoaded", () => {
               finalUpdate["kycDocs.bankDetailsUrl"] = bankDetailsUrl;
 
             await db.collection("customers").doc(id).update(finalUpdate);
+            reopenAfterSaveId = id;
             showToast(
               "success",
               "Customer Updated",
@@ -2308,7 +2342,8 @@ document.addEventListener("DOMContentLoaded", () => {
             customerData.financeCount = 1;
 
             toggleButtonLoading(saveBtn, true, "Saving Customer...");
-            await db.collection("customers").add(customerData);
+            const docRef = await db.collection("customers").add(customerData);
+            reopenAfterSaveId = docRef.id;
             await logActivity("NEW_LOAN", {
               customerName: customerData.name,
               amount: p,
@@ -2317,6 +2352,9 @@ document.addEventListener("DOMContentLoaded", () => {
           }
           getEl("customer-form-modal").classList.remove("show");
           await loadAndRenderAll();
+          if (reopenAfterSaveId) {
+            showCustomerDetails(reopenAfterSaveId);
+          }
         } catch (error) {
           console.error("Save/Update failed:", error);
           showToast("error", "Save Failed", error.message);
@@ -2477,7 +2515,7 @@ document.addEventListener("DOMContentLoaded", () => {
               interestRate: r,
               installments: chosenN,
               frequency: freq,
-              loanGivenDate: loanGivenDate,
+              loanGivenDate: formatForInput({ id: 'any' }, loanGivenDate),
               firstCollectionDate: firstDate,
               // Keep original endDate to preserve interest total
               loanEndDate: endDate,
@@ -2485,9 +2523,18 @@ document.addEventListener("DOMContentLoaded", () => {
             },
           };
 
+          // If user adjusted per-installment, prefer the chosenN from the preview; otherwise use base n
+          const chosenHiddenN = getEl("new-loan-chosen-n-installments");
+          const effectiveN = chosenHiddenN && chosenHiddenN.value ? parseInt(chosenHiddenN.value, 10) : nBase;
           let paymentSchedule = schedule
             ? schedule
-            : generateSimpleInterestSchedule(+totalRepayable.toFixed(2), nBase);
+            : generateSimpleInterestSchedule(+totalRepayable.toFixed(2), effectiveN);
+
+          // If a chosen end date was computed in the preview, keep it in sync in loanDetails
+          const chosenHiddenEnd = getEl("new-loan-chosen-end-date");
+          if (chosenHiddenEnd && chosenHiddenEnd.value) {
+            newLoanData.loanDetails.loanEndDate = chosenHiddenEnd.value;
+          }
 
           let currentDate = parseDateFlexible(firstDate);
           paymentSchedule.forEach((inst, index) => {
@@ -2577,6 +2624,10 @@ document.addEventListener("DOMContentLoaded", () => {
       "change",
       setAutomaticNewLoanFirstDate
     );
+    const newGivenEl = getEl("new-loan-given-date");
+    if (newGivenEl) {
+      newGivenEl.addEventListener("change", setAutomaticNewLoanFirstDate);
+    }
 
     const loanDetailFields = [
       "principal-amount",
@@ -2585,6 +2636,19 @@ document.addEventListener("DOMContentLoaded", () => {
       "first-collection-date",
       "loan-end-date",
     ];
+    // Helper to toggle 'required' on loan detail fields depending on mode
+    function setLoanDetailFieldsRequired(required) {
+      const ids = [
+        ...loanDetailFields,
+        "loan-given-date",
+      ];
+      ids.forEach((id) => {
+        const el = getEl(id);
+        if (!el) return;
+        if (required) el.setAttribute("required", "required");
+        else el.removeAttribute("required");
+      });
+    }
     loanDetailFields.forEach((id) => {
       const element = getEl(id);
       if (element) {
