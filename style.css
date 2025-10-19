@@ -20,7 +20,7 @@
 }
 .datepicker-header {
   display: grid;
-  grid-template-columns: 36px 1fr 36px;
+  grid-template-columns: 36px 1fr auto;
   align-items: center;
   gap: 0.25rem;
   margin-bottom: 0.5rem;
