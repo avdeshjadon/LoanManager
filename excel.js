@@ -24,9 +24,23 @@ function exportToExcel(customers, fileName = "customer-data.xlsx") {
       (sum, p) => sum + p.amountPaid,
       0
     );
-    const totalRepayable =
-      customer.loanDetails.principal *
-      (1 + customer.loanDetails.interestRate / 100);
+    // Compute total repayable using 30-day block interest across full loan term
+    let totalRepayable = customer.loanDetails.principal;
+    if (typeof calculateTotalInterest === 'function') {
+      try {
+        const ti = calculateTotalInterest(
+          customer.loanDetails.principal,
+          customer.loanDetails.interestRate,
+          customer.loanDetails.loanGivenDate,
+          customer.loanDetails.loanEndDate
+        );
+        totalRepayable = customer.loanDetails.principal + ti;
+      } catch (_) {
+        totalRepayable = customer.loanDetails.principal * (1 + customer.loanDetails.interestRate / 100);
+      }
+    } else {
+      totalRepayable = customer.loanDetails.principal * (1 + customer.loanDetails.interestRate / 100);
+    }
     const outstanding = totalRepayable - totalPaid;
     const totalInterestPaid = Math.max(
       0,

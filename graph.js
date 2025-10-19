@@ -78,9 +78,19 @@ function renderPortfolioChart(activeLoans, settledLoans) {
   });
 
   activeLoans.filter(c => c.loanDetails && c.paymentSchedule).forEach(loan => {
-      const totalRepayable = loan.loanDetails.principal * (1 + loan.loanDetails.interestRate / 100);
-      const totalPaid = loan.paymentSchedule.reduce((sum, p) => sum + p.amountPaid, 0);
-      totalOutstanding += (totalRepayable - totalPaid);
+      const principal = Number(loan.loanDetails.principal || 0);
+      const rate = Number(loan.loanDetails.interestRate || 0);
+      const given = loan.loanDetails.loanGivenDate;
+      const endCandidate = loan.loanDetails.loanEndDate;
+      const today = new Date();
+      const parsedEnd = (typeof parseDateFlexible === 'function') ? parseDateFlexible(endCandidate) : new Date(endCandidate);
+      const endBound = (today < parsedEnd) ? today : parsedEnd;
+      const interest = (typeof calculateTotalInterest === 'function')
+        ? calculateTotalInterest(principal, rate, given, endBound)
+        : 0;
+      const totalRepayable = principal + interest;
+      const totalPaid = loan.paymentSchedule.reduce((sum, p) => sum + (p.amountPaid || 0), 0);
+      totalOutstanding += Math.max(0, totalRepayable - totalPaid);
   });
   
   const theme = getThemeColors();
