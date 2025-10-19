@@ -132,6 +132,18 @@
       </div>
     </div>
 
+    <!-- Datepicker overlay -->
+    <div class="datepicker-overlay" id="datepicker-overlay" aria-hidden="true">
+      <div class="datepicker" role="dialog" aria-modal="true">
+        <div class="datepicker-header">
+          <button type="button" id="dp-prev">◀</button>
+          <div id="dp-title" style="font-weight:600"></div>
+          <button type="button" id="dp-next">▶</button>
+        </div>
+        <div class="datepicker-grid" id="dp-grid"></div>
+      </div>
+    </div>
+
     <div id="admin-dashboard" class="admin-container hidden">
       <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
@@ -312,11 +324,11 @@
               </div>
               <div class="form-row">
                 <div class="form-group">
-                  <label for="customer-dob">Date of Birth (dd-mm-yyyy)</label>
+                  <label for="customer-dob">Date of Birth</label>
                   <input
                     type="text"
                     id="customer-dob"
-                    class="form-control"
+                    class="form-control date-input"
                     placeholder="dd-mm-yyyy"
                     pattern="^\d{2}-\d{2}-\d{4}$"
                   />
@@ -478,18 +490,32 @@
                     <label for="first-collection-date"
                       >First Collection Date</label
                     ><input
-                      type="date"
+                      type="text"
                       id="first-collection-date"
-                      class="form-control"
+                      class="form-control date-input"
+                      placeholder="yyyy-mm-dd"
                       required
                     />
                   </div>
                   <div class="form-group">
                     <label for="loan-end-date">Loan End Date</label>
                     <input
-                      type="date"
+                      type="text"
                       id="loan-end-date"
-                      class="form-control"
+                      class="form-control date-input"
+                      placeholder="yyyy-mm-dd"
+                      required
+                    />
+                  </div>
+                </div>
+                <div class="form-row" style="margin-top: 0.5rem">
+                  <div class="form-group" style="width: 100%">
+                    <label for="loan-given-date">Loan Given Date</label>
+                    <input
+                      type="text"
+                      id="loan-given-date"
+                      class="form-control date-input"
+                      placeholder="yyyy-mm-dd"
                       required
                     />
                   </div>
@@ -650,18 +676,20 @@
               <div class="form-group">
                 <label for="new-loan-start-date">First Collection Date</label>
                 <input
-                  type="date"
+                  type="text"
                   id="new-loan-start-date"
-                  class="form-control"
+                  class="form-control date-input"
+                  placeholder="yyyy-mm-dd"
                   required
                 />
               </div>
               <div class="form-group">
                 <label for="new-loan-end-date">Loan End Date</label>
                 <input
-                  type="date"
+                  type="text"
                   id="new-loan-end-date"
-                  class="form-control"
+                  class="form-control date-input"
+                  placeholder="yyyy-mm-dd"
                   required
                 />
               </div>

@@ -211,6 +211,93 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
+  // THEMED DATEPICKER
+  let dpState = { open: false, target: null, year: 0, month: 0 };
+  const dpOverlay = document.getElementById("datepicker-overlay");
+  const dpGrid = document.getElementById("dp-grid");
+  const dpTitle = document.getElementById("dp-title");
+  const dpPrev = document.getElementById("dp-prev");
+  const dpNext = document.getElementById("dp-next");
+
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const formatForInput = (inputEl, date) => {
+    const id = inputEl.id || "";
+    if (id === "customer-dob") {
+      return `${pad2(date.getDate())}-${pad2(date.getMonth() + 1)}-${date.getFullYear()}`;
+    }
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+  };
+  const parseFromInput = (inputEl) => {
+    const v = (inputEl.value || "").trim();
+    if (!v) return new Date();
+    if (inputEl.id === "customer-dob") {
+      const m = v.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+      if (!m) return new Date();
+      return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+    }
+    // yyyy-mm-dd
+    const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return new Date();
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  };
+  const openDatepicker = (inputEl) => {
+    const base = parseFromInput(inputEl);
+    dpState = { open: true, target: inputEl, year: base.getFullYear(), month: base.getMonth() };
+    renderDatepicker();
+    dpOverlay.style.display = "flex";
+  };
+  const closeDatepicker = () => {
+    dpState.open = false;
+    dpState.target = null;
+    dpOverlay.style.display = "none";
+  };
+  const renderDatepicker = () => {
+    const { year, month } = dpState;
+    const first = new Date(year, month, 1);
+    const startDow = (first.getDay() + 6) % 7; // make Monday=0
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    dpTitle.textContent = first.toLocaleString(undefined, { month: 'long', year: 'numeric' });
+    const dows = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+    dpGrid.innerHTML = dows.map(d => `<div class="datepicker-cell datepicker-dow">${d}</div>`).join("");
+    for (let i = 0; i < startDow; i++) dpGrid.innerHTML += `<div></div>`;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const btn = document.createElement("div");
+      btn.className = "datepicker-cell";
+      btn.textContent = String(d);
+      btn.addEventListener("click", () => {
+        const selected = new Date(year, month, d);
+        dpState.target.value = formatForInput(dpState.target, selected);
+        dpState.target.dispatchEvent(new Event("change"));
+        closeDatepicker();
+      });
+      dpGrid.appendChild(btn);
+    }
+  };
+  dpPrev?.addEventListener("click", () => {
+    dpState.month -= 1;
+    if (dpState.month < 0) { dpState.month = 11; dpState.year -= 1; }
+    renderDatepicker();
+  });
+  dpNext?.addEventListener("click", () => {
+    dpState.month += 1;
+    if (dpState.month > 11) { dpState.month = 0; dpState.year += 1; }
+    renderDatepicker();
+  });
+  dpOverlay?.addEventListener("click", (e) => { if (e.target === dpOverlay) closeDatepicker(); });
+
+  // Attach to date inputs
+  document.addEventListener("focusin", (e) => {
+    const el = e.target;
+    if (el.classList?.contains("date-input")) {
+      openDatepicker(el);
+    }
+  });
+  document.addEventListener("click", (e) => {
+    const el = e.target;
+    const dateInput = el.closest?.(".date-input");
+    if (dateInput) openDatepicker(dateInput);
+  });
+
   // Helper: truncate long filenames with middle ellipsis and preserve extension
   const truncateMiddle = (name, maxChars) => {
     if (!name || typeof name !== "string") return "";
@@ -1261,19 +1348,20 @@ document.addEventListener("DOMContentLoaded", () => {
   function setAutomaticFirstDate() {
     const freq = getEl("collection-frequency").value;
     const firstDateInput = getEl("first-collection-date");
-    const today = new Date();
+    const givenInput = getEl("loan-given-date");
+    const base = givenInput && givenInput.value
+      ? new Date(givenInput.value)
+      : new Date();
 
-    switch (freq) {
-      case "daily":
-        break;
-      case "weekly":
-        today.setDate(today.getDate() + 7);
-        break;
-      case "monthly":
-        today.setMonth(today.getMonth() + 1);
-        break;
+    // First collection is after the loan is given
+    if (freq === "daily") {
+      base.setDate(base.getDate() + 1);
+    } else if (freq === "weekly") {
+      base.setDate(base.getDate() + 7);
+    } else if (freq === "monthly") {
+      base.setMonth(base.getMonth() + 1);
     }
-    firstDateInput.value = today.toISOString().split("T")[0];
+    firstDateInput.value = base.toISOString().split("T")[0];
     firstDateInput.dispatchEvent(new Event("change"));
   }
 
@@ -1945,7 +2033,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (isNaN(p) || isNaN(r) || isNaN(nBase) || !firstDate)
               throw new Error("Please fill all loan detail fields correctly.");
 
-            const loanGivenDate = new Date().toISOString().split("T")[0];
+            const loanGivenDate = getEl("loan-given-date")?.value || new Date().toISOString().split("T")[0];
 
             // Keep total interest constant using provided dates for interest calculation
             const totalRepayable =
@@ -2143,7 +2231,7 @@ document.addEventListener("DOMContentLoaded", () => {
           if (isNaN(p) || isNaN(r) || isNaN(nBase) || !firstDate || !endDate)
             throw new Error("Please fill all new loan fields correctly.");
 
-          const loanGivenDate = new Date().toISOString().split("T")[0];
+          const loanGivenDate = getEl("loan-given-date")?.value || new Date().toISOString().split("T")[0];
 
           // Keep total interest same based on provided range
           const totalRepayable = p + calculateTotalInterest(p, r, loanGivenDate, endDate);
@@ -2272,10 +2360,11 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
-    getEl("collection-frequency").addEventListener(
-      "change",
-      setAutomaticFirstDate
-    );
+    getEl("collection-frequency").addEventListener("change", setAutomaticFirstDate);
+    const givenEl = getEl("loan-given-date");
+    if (givenEl) {
+      givenEl.addEventListener("change", setAutomaticFirstDate);
+    }
     getEl("new-loan-frequency").addEventListener(
       "change",
       setAutomaticNewLoanFirstDate

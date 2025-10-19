@@ -1,3 +1,59 @@
+/* Custom datepicker */
+.datepicker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.2);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 6002;
+}
+.datepicker {
+  background: var(--bg-main);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+  padding: 0.75rem;
+  width: 300px;
+  color: var(--text-color);
+}
+.datepicker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.datepicker-header button {
+  border: 1px solid var(--border-color);
+  background: var(--bg-main);
+  color: var(--text-color);
+  border-radius: 6px;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+}
+.datepicker-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.25rem;
+}
+.datepicker-cell {
+  text-align: center;
+  padding: 0.5rem 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.datepicker-cell:hover {
+  background: var(--primary-t-08);
+}
+.datepicker-dow {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.datepicker-selected {
+  background: var(--primary);
+  color: #fff;
+}
 :root {
   --primary: #4a55a2;
   --secondary: #6d28d9;
