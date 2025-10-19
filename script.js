@@ -33,6 +33,33 @@ const parseDateFlexible = (input) => {
   return d;
 };
 
+// Add months preserving the original day-of-month when possible;
+// if the target month has fewer days, clamp to its last day.
+const addMonthsPreserveAnchor = (date, months) => {
+  const y = date.getFullYear();
+  const m = date.getMonth();
+  const d = date.getDate();
+  const target = new Date(y, m + months, 1);
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  const day = Math.min(d, lastDay);
+  return new Date(target.getFullYear(), target.getMonth(), day);
+};
+
+// Count month blocks anchored to the loan-given date's day-of-month.
+// Example: if start is 21st, then up to next month's 21st counts as 1 month;
+// anything beyond that boundary counts towards the next month, and so on.
+const countAnchorMonths = (start, end) => {
+  const s = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const e = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  if (e <= s) return 0;
+  let months = 1;
+  // Increase months while end is strictly greater than the boundary of the current month block
+  while (e > addMonthsPreserveAnchor(s, months)) {
+    months += 1;
+  }
+  return months;
+};
+
 const calculateTotalInterest = (
   principal,
   monthlyRate,
@@ -47,14 +74,8 @@ const calculateTotalInterest = (
   if (!(end instanceof Date) || isNaN(+end)) return 0;
   if (end <= start) return 0;
 
-  // Normalize to midnight to avoid DST issues
-  const s = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-  const e = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-  const diffMs = e - s;
-  const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-  const monthsBlocks = Math.ceil(days / 30);
-  const totalInterest = principal * monthlyRateDecimal * monthsBlocks;
-  return totalInterest;
+  const monthsBlocks = countAnchorMonths(start, end);
+  return principal * monthlyRateDecimal * monthsBlocks;
 };
 
 const calculateTotalInterestByTerm = (
@@ -64,23 +85,27 @@ const calculateTotalInterestByTerm = (
   frequency
 ) => {
   if (!principal || !monthlyRate || !numberOfInstallments || numberOfInstallments <= 0) return 0;
-  const monthlyRateDecimal = monthlyRate / 100;
-  let days = 0;
+  // Anchor calculation starting today (normalized); derive an end date based on frequency and n.
+  const start = new Date();
+  const s = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  let end = new Date(s);
   switch (frequency) {
-    case "monthly":
-      days = numberOfInstallments * 30; // assume 30-day months
+    case "monthly": {
+      end = addMonthsPreserveAnchor(s, numberOfInstallments);
       break;
-    case "weekly":
-      days = numberOfInstallments * 7;
+    }
+    case "weekly": {
+      end.setDate(end.getDate() + numberOfInstallments * 7);
       break;
-    case "daily":
-      days = numberOfInstallments;
+    }
+    case "daily": {
+      end.setDate(end.getDate() + numberOfInstallments);
       break;
+    }
     default:
       return 0;
   }
-  const monthsBlocks = Math.ceil(days / 30);
-  return principal * monthlyRateDecimal * monthsBlocks;
+  return calculateTotalInterest(principal, monthlyRate, s, end);
 };
 
 const formatCurrency = (amount) => {
@@ -2324,9 +2349,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 } else if (freq === "weekly") {
                   currentDate.setDate(currentDate.getDate() + 7);
                 } else if (freq === "monthly") {
-                  const originalDate = parseDateFlexible(firstDate);
-                  originalDate.setMonth(originalDate.getMonth() + index);
-                  currentDate = originalDate;
+                  const base = parseDateFlexible(firstDate);
+                  currentDate = addMonthsPreserveAnchor(base, index);
                 }
               }
               // save ISO yyyy-mm-dd but compute using parsed date
@@ -2544,9 +2568,8 @@ document.addEventListener("DOMContentLoaded", () => {
               } else if (freq === "weekly") {
                 currentDate.setDate(currentDate.getDate() + 7);
               } else if (freq === "monthly") {
-                const originalDate = parseDateFlexible(firstDate);
-                originalDate.setMonth(originalDate.getMonth() + index);
-                currentDate = originalDate;
+                const base = parseDateFlexible(firstDate);
+                currentDate = addMonthsPreserveAnchor(base, index);
               }
             }
             inst.dueDate = new Date(currentDate).toISOString().split("T")[0];
