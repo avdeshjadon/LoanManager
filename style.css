@@ -72,6 +72,17 @@
   --success-t-15: rgba(56, 161, 105, 0.15);
   --danger-t-10: rgba(229, 62, 62, 0.1);
   --warning-t-15: rgba(221, 107, 32, 0.15);
+
+  /* Motion tokens */
+  --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-soft: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --duration-fast: 160ms;
+  --duration-normal: 240ms;
+}
+
+/* Respect users who prefer less motion */
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
 }
 /* Base Dark Theme */
 html[data-theme="dark"] {
@@ -337,7 +348,11 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
+    transition: background-color var(--duration-fast) var(--ease-soft), color var(--duration-fast) var(--ease-soft), transform var(--duration-fast) var(--ease-soft), box-shadow var(--duration-fast) var(--ease-soft);
+    will-change: transform, box-shadow;
   min-height: 100vh;
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
+  .btn:active { transform: translateY(0); box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
   padding: 1rem;
   position: fixed;
   top: 0;
@@ -769,7 +784,8 @@ textarea.form-control {
   background-color: var(--bg-main);
   color: var(--text-gray);
   cursor: pointer;
-  transition: all 0.25s;
+  transition: border-color var(--duration-fast) var(--ease-soft), box-shadow var(--duration-fast) var(--ease-soft), transform var(--duration-fast) var(--ease-soft), background-color var(--duration-fast) var(--ease-soft);
+  will-change: transform, box-shadow;
   /* Prevent oversized filenames from spilling outside the label */
   overflow: hidden;
   line-height: 1; /* normalized line-height so text aligns with icon */
@@ -782,6 +798,8 @@ textarea.form-control {
 .file-input:focus + .file-input-label {
   box-shadow: 0 0 0 3px var(--primary-t-08);
 }
+.file-input-label:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0,0,0,0.08); }
+.file-input-label:active { transform: translateY(0); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
 .file-input-label i {
   font-size: 1.1rem;
   color: var(--primary);
@@ -1119,7 +1137,7 @@ fieldset legend {
   z-index: 2000;
   opacity: 0;
   visibility: hidden;
-  transition: all 0.3s;
+  transition: opacity var(--duration-normal) var(--ease-soft), visibility var(--duration-normal) var(--ease-soft);
   padding: 1rem;
 }
 .modal.show {
@@ -1135,8 +1153,9 @@ fieldset legend {
   display: flex;
   flex-direction: column;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  transition: all 0.3s;
-  transform: scale(0.95);
+  will-change: transform, opacity;
+  transition: transform var(--duration-normal) var(--ease-smooth), opacity var(--duration-normal) var(--ease-smooth);
+  transform: translateY(8px) scale(0.98);
   opacity: 0;
 }
 #customer-form-modal .modal-content,
@@ -1155,7 +1174,7 @@ fieldset legend {
   }
 
 .modal.show .modal-content {
-  transform: scale(1);
+  transform: translateY(0) scale(1);
   opacity: 1;
 }
 .modal-content.large {
