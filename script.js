@@ -621,11 +621,8 @@ document.addEventListener("DOMContentLoaded", () => {
     [...activeLoans, ...settledLoans].forEach((c) => {
       if (c.loanDetails && c.paymentSchedule) {
         totalPrincipal += c.loanDetails.principal;
-        const today = new Date();
-        const endCandidate = parseDateFlexible(c.loanDetails.loanEndDate);
-        const endBoundDate = (c.status === "settled")
-          ? endCandidate
-          : (today < endCandidate ? today : endCandidate);
+        // Use FULL-TERM interest (Loan Given Date -> Loan End Date) per 30-day block rule
+        const endBoundDate = parseDateFlexible(c.loanDetails.loanEndDate);
         const totalInterest = calculateTotalInterest(
           c.loanDetails.principal,
           c.loanDetails.interestRate,
@@ -1780,7 +1777,7 @@ document.addEventListener("DOMContentLoaded", () => {
           getEl("customer-id").value = "";
           getEl("customer-form-modal-title").textContent = "Add New Customer";
           // Default Loan Given Date to today and derive first collection
-          const todayStr = new Date().toISOString().split("T")[0];
+          const todayStr = formatForInput({ id: "any" }, new Date());
           const lgd = getEl("loan-given-date");
           if (lgd) lgd.value = todayStr;
           setAutomaticFirstDate();
@@ -2167,7 +2164,8 @@ document.addEventListener("DOMContentLoaded", () => {
               throw new Error("Please fill all loan detail fields correctly.");
 
             const loanGivenDate = getEl("loan-given-date")?.value || new Date();
-            const lgdStr = typeof loanGivenDate === 'string' ? loanGivenDate : formatForInput({id:'any'}, loanGivenDate);
+            const lgdDate = typeof loanGivenDate === 'string' ? parseDateFlexible(loanGivenDate) : loanGivenDate;
+            const lgdStr = formatForInput({id:'any'}, lgdDate);
 
             // Keep total interest constant using provided dates for interest calculation
             const totalRepayable =
@@ -2210,7 +2208,7 @@ document.addEventListener("DOMContentLoaded", () => {
               ? schedule
               : generateSimpleInterestSchedule(+totalRepayable.toFixed(2), nBase);
 
-            let currentDate = new Date(firstDate);
+            let currentDate = parseDateFlexible(firstDate);
             paymentSchedule.forEach((inst, index) => {
               if (index > 0) {
                 if (freq === "daily") {
@@ -2218,11 +2216,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 } else if (freq === "weekly") {
                   currentDate.setDate(currentDate.getDate() + 7);
                 } else if (freq === "monthly") {
-                  const originalDate = new Date(firstDate);
+                  const originalDate = parseDateFlexible(firstDate);
                   originalDate.setMonth(originalDate.getMonth() + index);
                   currentDate = originalDate;
                 }
               }
+              // save ISO yyyy-mm-dd but compute using parsed date
               inst.dueDate = new Date(currentDate).toISOString().split("T")[0];
             });
 
@@ -2365,7 +2364,8 @@ document.addEventListener("DOMContentLoaded", () => {
           if (isNaN(p) || isNaN(r) || isNaN(nBase) || !firstDate || !endDate)
             throw new Error("Please fill all new loan fields correctly.");
 
-          const loanGivenDate = getEl("new-loan-given-date")?.value || getEl("loan-given-date")?.value || formatForInput({id:'any'}, new Date());
+          const loanGivenRaw = getEl("new-loan-given-date")?.value || getEl("loan-given-date")?.value || new Date();
+          const loanGivenDate = typeof loanGivenRaw === 'string' ? parseDateFlexible(loanGivenRaw) : loanGivenRaw;
 
           // Keep total interest same based on provided range
           const totalRepayable = p + calculateTotalInterest(p, r, loanGivenDate, endDate);
@@ -2415,7 +2415,7 @@ document.addEventListener("DOMContentLoaded", () => {
             ? schedule
             : generateSimpleInterestSchedule(+totalRepayable.toFixed(2), nBase);
 
-          let currentDate = new Date(firstDate);
+          let currentDate = parseDateFlexible(firstDate);
           paymentSchedule.forEach((inst, index) => {
               if (index > 0) {
               if (freq === "daily") {
@@ -2423,7 +2423,7 @@ document.addEventListener("DOMContentLoaded", () => {
               } else if (freq === "weekly") {
                 currentDate.setDate(currentDate.getDate() + 7);
               } else if (freq === "monthly") {
-                const originalDate = new Date(firstDate);
+                const originalDate = parseDateFlexible(firstDate);
                 originalDate.setMonth(originalDate.getMonth() + index);
                 currentDate = originalDate;
               }

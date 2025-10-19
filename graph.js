@@ -82,9 +82,8 @@ function renderPortfolioChart(activeLoans, settledLoans) {
       const rate = Number(loan.loanDetails.interestRate || 0);
       const given = loan.loanDetails.loanGivenDate;
       const endCandidate = loan.loanDetails.loanEndDate;
-      const today = new Date();
-      const parsedEnd = (typeof parseDateFlexible === 'function') ? parseDateFlexible(endCandidate) : new Date(endCandidate);
-      const endBound = (today < parsedEnd) ? today : parsedEnd;
+      // Use full-term end date to match dashboard cards
+      const endBound = (typeof parseDateFlexible === 'function') ? parseDateFlexible(endCandidate) : new Date(endCandidate);
       const interest = (typeof calculateTotalInterest === 'function')
         ? calculateTotalInterest(principal, rate, given, endBound)
         : 0;
