@@ -701,6 +701,25 @@ document.addEventListener("DOMContentLoaded", () => {
     return { count: deleted };
   };
 
+  // Renumber financeCount for all ACTIVE loans of a given customer name sequentially (1..n)
+  const renumberActiveLoansByCustomerName = async (customerName) => {
+    if (!currentUser || !customerName) return 0;
+    const snap = await db
+      .collection("customers")
+      .where("owner", "==", currentUser.uid)
+      .where("name", "==", customerName)
+      .where("status", "==", "active")
+      .orderBy("createdAt", "asc")
+      .get();
+    if (snap.empty) return 0;
+    const batch = db.batch();
+    snap.docs.forEach((doc, idx) => {
+      batch.update(doc.ref, { financeCount: idx + 1 });
+    });
+    await batch.commit();
+    return snap.size;
+  };
+
   const calculateKeyStats = (activeLoans, settledLoans) => {
     let totalPrincipal = 0,
       totalOutstanding = 0,
