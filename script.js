@@ -1123,12 +1123,17 @@ document.addEventListener("DOMContentLoaded", () => {
     ].find((c) => c.id === customerId);
     if (!customer) return;
 
-    const allLoansForCustomer = [
-      ...window.allCustomers.active,
-      ...window.allCustomers.settled,
-    ]
+    // --- MODIFIED LOGIC ---
+    // Determine which list to filter from based on the clicked customer's status
+    const loanListSource =
+      customer.status === "active"
+        ? window.allCustomers.active
+        : window.allCustomers.settled;
+
+    const allLoansForCustomer = loanListSource
       .filter((c) => c.name === customer.name)
       .sort((a, b) => (a.financeCount || 1) - (b.financeCount || 1));
+    // --- END MODIFIED LOGIC ---
 
     const loansToDisplay = [
       ...new Map(allLoansForCustomer.map((item) => [item.id, item])).values(),
