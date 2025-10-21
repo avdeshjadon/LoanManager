@@ -14,7 +14,6 @@ const storage = firebase.storage();
 
 window.allCustomers = { active: [], settled: [] };
 
-// Parse dd-mm-yyyy or yyyy-mm-dd or Date
 const parseDateFlexible = (input) => {
   if (input instanceof Date) return input;
   if (typeof input === "number") return new Date(input);
@@ -23,37 +22,33 @@ const parseDateFlexible = (input) => {
     return d;
   }
   const s = input.trim();
-  // dd-mm-yyyy
   let m = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
   if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
-  // yyyy-mm-dd
   m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   const d = new Date(s);
   return d;
 };
 
-// Add months preserving the original day-of-month when possible;
-// if the target month has fewer days, clamp to its last day.
 const addMonthsPreserveAnchor = (date, months) => {
   const y = date.getFullYear();
   const m = date.getMonth();
   const d = date.getDate();
   const target = new Date(y, m + months, 1);
-  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  const lastDay = new Date(
+    target.getFullYear(),
+    target.getMonth() + 1,
+    0
+  ).getDate();
   const day = Math.min(d, lastDay);
   return new Date(target.getFullYear(), target.getMonth(), day);
 };
 
-// Count month blocks anchored to the loan-given date's day-of-month.
-// Example: if start is 21st, then up to next month's 21st counts as 1 month;
-// anything beyond that boundary counts towards the next month, and so on.
 const countAnchorMonths = (start, end) => {
   const s = new Date(start.getFullYear(), start.getMonth(), start.getDate());
   const e = new Date(end.getFullYear(), end.getMonth(), end.getDate());
   if (e <= s) return 0;
   let months = 1;
-  // Increase months while end is strictly greater than the boundary of the current month block
   while (e > addMonthsPreserveAnchor(s, months)) {
     months += 1;
   }
@@ -84,8 +79,13 @@ const calculateTotalInterestByTerm = (
   numberOfInstallments,
   frequency
 ) => {
-  if (!principal || !monthlyRate || !numberOfInstallments || numberOfInstallments <= 0) return 0;
-  // Anchor calculation starting today (normalized); derive an end date based on frequency and n.
+  if (
+    !principal ||
+    !monthlyRate ||
+    !numberOfInstallments ||
+    numberOfInstallments <= 0
+  )
+    return 0;
   const start = new Date();
   const s = new Date(start.getFullYear(), start.getMonth(), start.getDate());
   let end = new Date(s);
@@ -241,22 +241,20 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  // THEMED DATEPICKER (Year → Month → Day flow)
-  // view: 'years' | 'months' | 'days'
-  let dpState = { open: false, target: null, year: 0, month: 0, view: 'days' };
+  let dpState = { open: false, target: null, year: 0, month: 0, view: "days" };
   const dpOverlay = document.getElementById("datepicker-overlay");
   const dpGrid = document.getElementById("dp-grid");
   const dpTitle = document.getElementById("dp-title");
   const dpPrev = document.getElementById("dp-prev");
   const dpNext = document.getElementById("dp-next");
   const dpToday = document.getElementById("dp-today");
-  // removed legacy dropdowns
 
   const pad2 = (n) => String(n).padStart(2, "0");
   const formatForInput = (inputEl, date) => {
     const id = inputEl.id || "";
-    // Use dd-mm-yyyy for all visible inputs to match your request
-    return `${pad2(date.getDate())}-${pad2(date.getMonth() + 1)}-${date.getFullYear()}`;
+    return `${pad2(date.getDate())}-${pad2(
+      date.getMonth() + 1
+    )}-${date.getFullYear()}`;
   };
   const parseFromInput = (inputEl) => {
     const v = (inputEl.value || "").trim();
@@ -266,23 +264,21 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!m) return new Date();
       return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
     }
-    // dd-mm-yyyy
     const m = v.match(/^(\d{2})-(\d{2})-(\d{4})$/);
     if (!m) return new Date();
     return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
   };
   const openDatepicker = (inputEl) => {
     const base = parseFromInput(inputEl);
-    const isDob = inputEl.id === 'customer-dob';
+    const isDob = inputEl.id === "customer-dob";
     dpState = {
       open: true,
       target: inputEl,
       year: base.getFullYear(),
       month: base.getMonth(),
-      view: isDob ? 'years' : 'days',
+      view: isDob ? "years" : "days",
     };
-    // Title is only clickable (to go up a level) for DOB picker
-    if (dpTitle) dpTitle.classList.toggle('clickable', isDob);
+    if (dpTitle) dpTitle.classList.toggle("clickable", isDob);
     renderDatepicker();
     dpOverlay.style.display = "flex";
   };
@@ -293,49 +289,74 @@ document.addEventListener("DOMContentLoaded", () => {
   };
   const renderDatepicker = () => {
     const { year, month, view } = dpState;
-    dpGrid.classList.remove('dp-grid-days','dp-grid-months','dp-grid-years');
-    if (view === 'years') {
-      // Show 16 years grid around current 'year'
+    dpGrid.classList.remove("dp-grid-days", "dp-grid-months", "dp-grid-years");
+    if (view === "years") {
       dpTitle.textContent = `${year}`;
-      dpGrid.classList.add('dp-grid-years');
-      dpGrid.innerHTML = '';
-      const start = Math.floor(year / 16) * 16 - 3; // small back buffer
+      dpGrid.classList.add("dp-grid-years");
+      dpGrid.innerHTML = "";
+      const start = Math.floor(year / 16) * 16 - 3;
       for (let y = start; y < start + 20; y++) {
-        const cell = document.createElement('div');
-        cell.className = 'datepicker-cell';
+        const cell = document.createElement("div");
+        cell.className = "datepicker-cell";
         cell.textContent = String(y);
-        if (y === year) cell.classList.add('datepicker-selected');
-        cell.addEventListener('click', () => { dpState.year = y; dpState.view = 'months'; renderDatepicker(); });
+        if (y === year) cell.classList.add("datepicker-selected");
+        cell.addEventListener("click", () => {
+          dpState.year = y;
+          dpState.view = "months";
+          renderDatepicker();
+        });
         dpGrid.appendChild(cell);
       }
       return;
     }
 
-    if (view === 'months') {
+    if (view === "months") {
       dpTitle.textContent = `${year}`;
-      dpGrid.classList.add('dp-grid-months');
-      dpGrid.innerHTML = '';
-      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      dpGrid.classList.add("dp-grid-months");
+      dpGrid.innerHTML = "";
+      const months = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ];
       months.forEach((label, idx) => {
-        const cell = document.createElement('div');
-        cell.className = 'datepicker-cell';
+        const cell = document.createElement("div");
+        cell.className = "datepicker-cell";
         cell.textContent = label;
-        if (idx === month) cell.classList.add('datepicker-selected');
-        cell.addEventListener('click', () => { dpState.month = idx; dpState.view = 'days'; renderDatepicker(); });
+        if (idx === month) cell.classList.add("datepicker-selected");
+        cell.addEventListener("click", () => {
+          dpState.month = idx;
+          dpState.view = "days";
+          renderDatepicker();
+        });
         dpGrid.appendChild(cell);
       });
       return;
     }
 
-    // days view
     const first = new Date(year, month, 1);
-    const startDow = (first.getDay() + 6) % 7; // Monday=0
+    const startDow = (first.getDay() + 6) % 7;
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    dpTitle.textContent = first.toLocaleString(undefined, { month: 'long', year: 'numeric' });
-    dpGrid.classList.add('dp-grid-days');
-    const dows = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-    dpGrid.innerHTML = dows.map(d => `<div class="datepicker-cell datepicker-dow">${d}</div>`).join("");
-    for (let i = 0; i < startDow; i++) dpGrid.innerHTML += `<div class="datepicker-cell datepicker-ghost"></div>`;
+    dpTitle.textContent = first.toLocaleString(undefined, {
+      month: "long",
+      year: "numeric",
+    });
+    dpGrid.classList.add("dp-grid-days");
+    const dows = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    dpGrid.innerHTML = dows
+      .map((d) => `<div class="datepicker-cell datepicker-dow">${d}</div>`)
+      .join("");
+    for (let i = 0; i < startDow; i++)
+      dpGrid.innerHTML += `<div class="datepicker-cell datepicker-ghost"></div>`;
     for (let d = 1; d <= daysInMonth; d++) {
       const btn = document.createElement("div");
       btn.className = "datepicker-cell";
@@ -350,41 +371,55 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
   dpPrev?.addEventListener("click", () => {
-    const isDob = dpState.target && dpState.target.id === 'customer-dob';
-    if (isDob && dpState.view === 'years') { dpState.year -= 16; }
-    else if (isDob && dpState.view === 'months') { dpState.year -= 1; }
-    else { dpState.month -= 1; if (dpState.month < 0) { dpState.month = 11; dpState.year -= 1; } }
+    const isDob = dpState.target && dpState.target.id === "customer-dob";
+    if (isDob && dpState.view === "years") {
+      dpState.year -= 16;
+    } else if (isDob && dpState.view === "months") {
+      dpState.year -= 1;
+    } else {
+      dpState.month -= 1;
+      if (dpState.month < 0) {
+        dpState.month = 11;
+        dpState.year -= 1;
+      }
+    }
     renderDatepicker();
   });
   dpNext?.addEventListener("click", () => {
-    const isDob = dpState.target && dpState.target.id === 'customer-dob';
-    if (isDob && dpState.view === 'years') { dpState.year += 16; }
-    else if (isDob && dpState.view === 'months') { dpState.year += 1; }
-    else { dpState.month += 1; if (dpState.month > 11) { dpState.month = 0; dpState.year += 1; } }
+    const isDob = dpState.target && dpState.target.id === "customer-dob";
+    if (isDob && dpState.view === "years") {
+      dpState.year += 16;
+    } else if (isDob && dpState.view === "months") {
+      dpState.year += 1;
+    } else {
+      dpState.month += 1;
+      if (dpState.month > 11) {
+        dpState.month = 0;
+        dpState.year += 1;
+      }
+    }
     renderDatepicker();
   });
-  dpOverlay?.addEventListener("click", (e) => { if (e.target === dpOverlay) closeDatepicker(); });
+  dpOverlay?.addEventListener("click", (e) => {
+    if (e.target === dpOverlay) closeDatepicker();
+  });
   dpToday?.addEventListener("click", () => {
     if (!dpState.target) return;
     const now = new Date();
-    // Jump to days view for current month/year
     dpState.year = now.getFullYear();
     dpState.month = now.getMonth();
-    dpState.view = 'days';
+    dpState.view = "days";
     dpState.target.value = formatForInput(dpState.target, now);
     dpState.target.dispatchEvent(new Event("change"));
     closeDatepicker();
   });
-  // Title click: go up a level (days -> months -> years)
-  dpTitle?.addEventListener('click', () => {
-    // Only allow navigating up for DOB field
-    if (!dpState.target || dpState.target.id !== 'customer-dob') return;
-    if (dpState.view === 'days') dpState.view = 'months';
-    else if (dpState.view === 'months') dpState.view = 'years';
+  dpTitle?.addEventListener("click", () => {
+    if (!dpState.target || dpState.target.id !== "customer-dob") return;
+    if (dpState.view === "days") dpState.view = "months";
+    else if (dpState.view === "months") dpState.view = "years";
     renderDatepicker();
   });
 
-  // Attach to date inputs
   document.addEventListener("focusin", (e) => {
     const el = e.target;
     if (el.classList?.contains("date-input")) {
@@ -397,7 +432,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (dateInput) openDatepicker(dateInput);
   });
 
-  // Helper: truncate long filenames with middle ellipsis and preserve extension
   const truncateMiddle = (name, maxChars) => {
     if (!name || typeof name !== "string") return "";
     if (!maxChars || name.length <= maxChars) return name;
@@ -410,9 +444,8 @@ document.addEventListener("DOMContentLoaded", () => {
     return `${base.slice(0, keep)}...${base.slice(-keep)}${ext}`;
   };
 
-  // *** NEW FUNCTION: FOR FILE SIZE WARNING POPUP ***
   const showSizeAlert = () => {
-    if (document.querySelector(".popup-overlay")) return; // Don't show if one is already open
+    if (document.querySelector(".popup-overlay")) return;
 
     const alertPopup = document.createElement("div");
     alertPopup.className = "popup-overlay";
@@ -440,7 +473,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const calculateInstallments = (startDateStr, endDateStr, frequency) => {
     if (!startDateStr || !endDateStr) return 0;
-    // Accept dd-mm-yyyy and yyyy-mm-dd; normalize
     const parseAny = (s) => {
       const dm = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
       if (dm) return new Date(Number(dm[3]), Number(dm[2]) - 1, Number(dm[1]));
@@ -481,8 +513,6 @@ document.addEventListener("DOMContentLoaded", () => {
     throw new Error("Invalid frequency selected.");
   };
 
-  // Compute the loan end date given a start date, number of installments, and frequency
-  // Note: If n = 1, end date is the start date itself (single collection)
   const computeEndDateFromInstallments = (startDateStr, n, frequency) => {
     if (!startDateStr || !n || n <= 0) return startDateStr;
     const parseAny = (s) => {
@@ -494,16 +524,15 @@ document.addEventListener("DOMContentLoaded", () => {
       return isNaN(+d) ? new Date() : d;
     };
     const first = parseAny(startDateStr);
-  if (n === 1) return formatForInput({ id: "any" }, first);
+    if (n === 1) return formatForInput({ id: "any" }, first);
 
     let end = new Date(first);
-    const steps = n - 1; // because first collection occurs on start date
+    const steps = n - 1;
     if (frequency === "daily") {
       end.setDate(end.getDate() + steps);
     } else if (frequency === "weekly") {
       end.setDate(end.getDate() + steps * 7);
     } else if (frequency === "monthly") {
-      // Add months based on the original start date to preserve day-of-month intent
       const base = new Date(first);
       base.setMonth(base.getMonth() + steps);
       end = base;
@@ -535,14 +564,16 @@ document.addEventListener("DOMContentLoaded", () => {
         pendingAmount: +installmentAmount.toFixed(2),
         status: "Due",
         paidDate: null,
-        modeOfPayment: null, // --- NEW ---
+        modeOfPayment: null,
       });
     }
     return schedule;
   };
 
-  // Generate schedule for a chosen per-installment amount (except possibly last remainder)
-  const generateScheduleWithInstallmentAmount = (totalRepayable, perInstallment) => {
+  const generateScheduleWithInstallmentAmount = (
+    totalRepayable,
+    perInstallment
+  ) => {
     const schedule = [];
     if (!perInstallment || perInstallment <= 0) return schedule;
     const totalCents = Math.round(totalRepayable * 100);
@@ -562,7 +593,7 @@ document.addEventListener("DOMContentLoaded", () => {
         pendingAmount: amt,
         status: "Due",
         paidDate: null,
-        modeOfPayment: null, // --- NEW ---
+        modeOfPayment: null,
       });
     }
     return schedule;
@@ -572,7 +603,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const modal = getEl("confirmation-modal");
     getEl("confirmation-title").textContent = title;
     getEl("confirmation-message").textContent = message;
-    // Ensure it's on top of any other open modal (like settle-selection-modal)
     const prevZ = modal.style.zIndex;
     modal.style.zIndex = "10001";
     modal.classList.add("show");
@@ -609,33 +639,31 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  // CASCADE DELETE HELPERS
-  // Recursively delete all files under a storage folder path
   const deleteStorageFolder = async (path) => {
     try {
       const folderRef = storage.ref(path);
       const list = await folderRef.listAll();
-      // Delete files in this level
       await Promise.all(
         list.items.map(async (itemRef) => {
           try {
             await itemRef.delete();
           } catch (e) {
-            console.warn("Failed to delete storage item:", itemRef.fullPath, e.message || e);
+            console.warn(
+              "Failed to delete storage item:",
+              itemRef.fullPath,
+              e.message || e
+            );
           }
         })
       );
-      // Recurse into subfolders if any
       for (const prefix of list.prefixes) {
         await deleteStorageFolder(prefix.fullPath);
       }
     } catch (err) {
-      // If folder doesn't exist or listAll fails, ignore silently
       console.warn("Storage folder cleanup warning:", path, err.message || err);
     }
   };
 
-  // Delete all activity logs for a given customer name owned by current user
   const deleteActivitiesByCustomerName = async (customerName) => {
     if (!currentUser || !customerName) return 0;
     try {
@@ -650,12 +678,15 @@ document.addEventListener("DOMContentLoaded", () => {
       await batch.commit();
       return snap.size;
     } catch (e) {
-      console.warn("Activity cleanup warning for", customerName, e.message || e);
+      console.warn(
+        "Activity cleanup warning for",
+        customerName,
+        e.message || e
+      );
       return 0;
     }
   };
 
-  // Delete a single customer document + its KYC folder; optionally cleanup activities by name
   const deleteSingleCustomerCascade = async (customerId, customerData) => {
     try {
       let data = customerData;
@@ -664,11 +695,8 @@ document.addEventListener("DOMContentLoaded", () => {
         data = doc.exists ? doc.data() : null;
       }
       const customerName = data?.name;
-      // Delete storage files under this customer's folder
       await deleteStorageFolder(`kyc/${currentUser.uid}/${customerId}`);
-      // Delete the Firestore document
       await db.collection("customers").doc(customerId).delete();
-      // Best-effort: also remove activities for this customer name
       if (customerName) await deleteActivitiesByCustomerName(customerName);
       return { name: customerName };
     } catch (e) {
@@ -676,7 +704,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  // Delete ALL records (loans) for a given customer name across statuses
   const deleteAllCustomerRecordsByName = async (customerName) => {
     if (!currentUser || !customerName) return { count: 0 };
     const snap = await db
@@ -685,7 +712,6 @@ document.addEventListener("DOMContentLoaded", () => {
       .where("name", "==", customerName)
       .get();
     if (snap.empty) return { count: 0 };
-    // Delete each doc + its storage folder
     let deleted = 0;
     for (const doc of snap.docs) {
       try {
@@ -698,12 +724,10 @@ document.addEventListener("DOMContentLoaded", () => {
         console.warn("Failed to delete customer doc:", doc.id, e.message || e);
       }
     }
-    // Remove activities tied to this name
     await deleteActivitiesByCustomerName(customerName);
     return { count: deleted };
   };
 
-  // Renumber financeCount for all ACTIVE loans of a given customer name sequentially (1..n)
   const renumberActiveLoansByCustomerName = async (customerName) => {
     if (!currentUser || !customerName) return 0;
     const snap = await db
@@ -725,12 +749,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const calculateKeyStats = (activeLoans, settledLoans) => {
     let totalPrincipal = 0,
       totalOutstanding = 0,
-      totalInterestEarned = 0; // Accrued interest up to today (or end date)
+      totalInterestEarned = 0;
 
     [...activeLoans, ...settledLoans].forEach((c) => {
       if (c.loanDetails && c.paymentSchedule) {
         totalPrincipal += c.loanDetails.principal;
-        // Use FULL-TERM interest (Loan Given Date -> Loan End Date) per 30-day block rule
         const endBoundDate = parseDateFlexible(c.loanDetails.loanEndDate);
         const totalInterest = calculateTotalInterest(
           c.loanDetails.principal,
@@ -862,12 +885,10 @@ document.addEventListener("DOMContentLoaded", () => {
             icon = "fa-flag-checkered text-primary";
             text = `Loan settled for ${customerName}`;
             break;
-          // --- NEW CASE ---
           case "LOAN_RESTORED":
             icon = "fa-undo-alt text-warning";
             text = `Loan restored for ${customerName}`;
             break;
-          // --- END NEW CASE ---
         }
         const timestamp = act.timestamp
           ? new Date(act.timestamp.seconds * 1000).toLocaleString()
@@ -878,35 +899,32 @@ document.addEventListener("DOMContentLoaded", () => {
     container.innerHTML = `<ul class="activity-list">${activityHTML}</ul>`;
   };
 
-  // Helper to format any stored date (dd-mm-yyyy or yyyy-mm-dd) into dd-mm-yyyy for display
   const formatForDisplay = (val) => {
     if (!val) return "N/A";
     try {
-      const d = parseDateFlexible(val); // Uses the global helper
+      const d = parseDateFlexible(val);
       if (!d || isNaN(+d)) return "N/A";
-      return formatForInput({ id: "any" }, d); // Re-uses the existing datepicker formatter
+      return formatForInput({ id: "any" }, d);
     } catch (_) {
       return "N/A";
     }
   };
 
   const populateTodaysCollection = () => {
-    // Find the container, be safe if it doesn't exist yet
     const container = getEl("todays-collection-container");
-    if (!container) return; // No-op as requested
+    if (!container) return;
 
     let todaysEmis = [];
     const today = new Date();
-    const todayStr = today.toISOString().split("T")[0]; // yyyy-mm-dd for comparison
+    const todayStr = today.toISOString().split("T")[0];
 
     window.allCustomers.active
       .filter((c) => c.loanDetails && c.paymentSchedule)
       .forEach((customer) => {
         customer.paymentSchedule.forEach((inst) => {
-          // Find installments that are Due or Pending
           if (
             (inst.status === "Due" || inst.status === "Pending") &&
-            inst.dueDate === todayStr // Check if due date is today
+            inst.dueDate === todayStr
           ) {
             todaysEmis.push({
               name: `${customer.name} (F${customer.financeCount || 1})`,
@@ -920,7 +938,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     todaysEmis.sort((a, b) => a.name.localeCompare(b.name));
 
-    // Render the list
     if (todaysEmis.length === 0) {
       container.innerHTML = `<ul class="activity-list"><li class="activity-item" style="cursor:default; justify-content:center;">No collections due today.</li></ul>`;
       return;
@@ -928,9 +945,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     container.innerHTML = `<ul class="activity-list">${todaysEmis
       .map((item) => {
-        // Use the new helper
         const formattedDate = formatForDisplay(item.date);
-        return `<li class="activity-item" data-id="${item.customerId}"><div class="activity-info"><span class="activity-name">${item.name}</span><span classs="activity-date">${formattedDate}</span></div><div class="activity-value"><span class="activity-amount">${formatCurrency(item.amount)}</span></div></li>`;
+        return `<li class="activity-item" data-id="${
+          item.customerId
+        }"><div class="activity-info"><span class="activity-name">${
+          item.name
+        }</span><span classs="activity-date">${formattedDate}</span></div><div class="activity-value"><span class="activity-amount">${formatCurrency(
+          item.amount
+        )}</span></div></li>`;
       })
       .join("")}</ul>`;
   };
@@ -947,6 +969,11 @@ document.addEventListener("DOMContentLoaded", () => {
     )}</div></div><div class="stat-card"><div class="stat-title">Active Loans</div><div class="stat-value">${
       stats.activeLoanCount
     }</div></div></div><div class="dashboard-grid"><div class="form-card chart-card"><h3 >Portfolio Overview</h3><div class="chart-container"><canvas id="portfolioChart"></canvas></div></div><div class="form-card chart-card grid-col-span-2"><h3 >Profit Over Time <div class="chart-controls" id="profit-chart-controls"><button class="btn btn-sm btn-outline active" data-frame="monthly">Month</button><button class="btn btn-sm btn-outline" data-frame="yearly">Year</button></div></h3><div class="chart-container"><canvas id="profitChart"></canvas></div></div><div class="form-card"><h3><i class="fas fa-clock" style="color:var(--primary)"></i> Upcoming Installments</h3><div id="upcoming-emi-container" class="activity-container"></div></div><div class="form-card"><h3><i class="fas fa-exclamation-triangle" style="color:var(--danger)"></i> Overdue Installments</h3><div id="overdue-emi-container" class="activity-container"></div></div><div class="form-card"><h3><i class="fas fa-history"></i> Recent Activity <button class="btn btn-danger btn-sm" id="clear-all-activities-btn" title="Clear all activities"><i class="fas fa-trash"></i></button></h3><div id="recent-activity-container" class="activity-container"></div></div></div>`;
+
+    getEl(
+      "todays-collection-section"
+    ).innerHTML = `<div class="form-card"><h3><i class="fas fa-calendar-day"></i> Today's Collection Summary</h3><div id="todays-collection-container" class="activity-container"></div></div>`;
+
     getEl(
       "calculator-section"
     ).innerHTML = `<div class="form-card"><h3><i class="fas fa-calculator"></i> Simple Interest Loan Calculator</h3><form id="emi-calculator-form"><div class="form-group"><label for="calc-principal">Loan Amount (₹)</label><input type="number" id="calc-principal" class="form-control" placeholder="e.g., 50000" required /></div><div class="form-row" style="grid-template-columns: 1fr 1fr 1fr;"><div class="form-group"><label for="calc-rate">Monthly Interest Rate (%)</label><input type="number" id="calc-rate" class="form-control" placeholder="e.g., 10" step="0.01" required /></div><div class="form-group"><label for="collection-frequency-calc">Collection Frequency</label><select id="collection-frequency-calc" class="form-control" required><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly" selected>Monthly</option></select></div><div class="form-group"><label for="calc-tenure">Number of Installments</label><input type="number" id="calc-tenure" class="form-control" placeholder="e.g., 12" required /></div></div><button type="submit" class="btn btn-primary">Calculate</button></form><div id="calculator-results" class="hidden" style="margin-top: 2rem; border-top: 1px solid var(--border-color); padding-top: 1.5rem;"><h4>Calculation Result</h4><div class="calc-result-item"><span>Per Installment Amount</span><span id="result-emi"></span></div><div class="calc-result-item"><span>Total Interest</span><span id="result-interest"></span></div><div class="calc-result-item"><span>Total Payment</span><span id="result-total"></span></div></div></div>`;
@@ -994,9 +1021,7 @@ document.addEventListener("DOMContentLoaded", () => {
         interestEarned
       )}</span>`;
 
-      // --- NEW BUTTON ---
       const restoreButton = `<button class="btn btn-success btn-sm restore-customer-btn" data-id="${c.id}" title="Restore Loan"><i class="fas fa-undo-alt"></i></button>`;
-      // --- END NEW BUTTON ---
       const deleteButton = `<button class="btn btn-danger btn-sm delete-customer-btn" data-id="${c.id}" title="Delete Customer"><i class="fas fa-trash-alt"></i></button>`;
 
       li.innerHTML = `<div class="customer-info" data-id="${c.id}">${nameHtml}<div class="customer-details">${detailsHtml}</div></div><div class="customer-actions">${restoreButton}${deleteButton}<span class="view-details-prompt" data-id="${c.id}">View Details</span></div>`;
@@ -1119,7 +1144,13 @@ document.addEventListener("DOMContentLoaded", () => {
         .slice(0, 5)
         .map((item) => {
           const formattedDate = formatForDisplay(item.date);
-          return `<li class="activity-item" data-id="${item.customerId}"><div class="activity-info"><span class="activity-name">${item.name}</span><span class="activity-date">${formattedDate}</span></div><div class="activity-value"><span class="activity-amount">${formatCurrency(item.amount)}</span></div></li>`;
+          return `<li class="activity-item" data-id="${
+            item.customerId
+          }"><div class="activity-info"><span class="activity-name">${
+            item.name
+          }</span><span class="activity-date">${formattedDate}</span></div><div class="activity-value"><span class="activity-amount">${formatCurrency(
+            item.amount
+          )}</span></div></li>`;
         })
         .join("")}</ul>`;
     };
@@ -1134,8 +1165,6 @@ document.addEventListener("DOMContentLoaded", () => {
     ].find((c) => c.id === customerId);
     if (!customer) return;
 
-    // --- MODIFIED LOGIC ---
-    // Determine which list to filter from based on the clicked customer's status
     const loanListSource =
       customer.status === "active"
         ? window.allCustomers.active
@@ -1144,7 +1173,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const allLoansForCustomer = loanListSource
       .filter((c) => c.name === customer.name)
       .sort((a, b) => (a.financeCount || 1) - (b.financeCount || 1));
-    // --- END MODIFIED LOGIC ---
 
     const loansToDisplay = [
       ...new Map(allLoansForCustomer.map((item) => [item.id, item])).values(),
@@ -1194,14 +1222,12 @@ document.addEventListener("DOMContentLoaded", () => {
       frequencyBadge.className = `loan-frequency-badge frequency-${customer.loanDetails.frequency}`;
     }
 
-    // --- NEW: Set MoP Badge ---
     const mopBadge = getEl("details-modal-loan-mop");
     if (mopBadge && customer.loanDetails?.modeOfPayment) {
       mopBadge.textContent = customer.loanDetails.modeOfPayment;
     } else if (mopBadge) {
       mopBadge.textContent = "N/A";
     }
-    // --- END NEW ---
 
     getEl("generate-pdf-btn").dataset.id = customerId;
     getEl("send-whatsapp-btn").dataset.id = customerId;
@@ -1212,7 +1238,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const { paymentSchedule: schedule, loanDetails: details } = customer;
-    // Helper to format any stored date (dd-mm-yyyy or yyyy-mm-dd) into dd-mm-yyyy for display
     const dispDate = (val) => {
       if (!val) return "N/A";
       try {
@@ -1241,7 +1266,6 @@ document.addEventListener("DOMContentLoaded", () => {
       (p) => p.status === "Due" || p.status === "Pending"
     );
 
-    // Bank fields for display
     const bankNameDisplay = customer.bankName || "N/A";
     const accountNumberDisplay = customer.accountNumber || "N/A";
     const ifscDisplay = customer.ifsc || "N/A";
@@ -1262,32 +1286,50 @@ document.addEventListener("DOMContentLoaded", () => {
     const picButton = createKycViewButton(kycDocs.picUrl, "View Photo");
     const bankButton = createKycViewButton(kycDocs.bankDetailsUrl);
 
-    // --- UPDATED: Added MoP Header ---
-    modalBody.innerHTML = `<div class="details-view-grid"><div class="customer-profile-panel"><div class="profile-header"><div class="profile-avatar">${customer.name
-      .charAt(0)
-      .toUpperCase()}</div><h3 class="profile-name">${
-      customer.name
-    }</h3><p class="profile-contact">${
+    // --- AVATAR LOGIC ---
+    let avatarHtml;
+    if (kycDocs.picUrl) {
+      avatarHtml = `<img src="${kycDocs.picUrl}" alt="${customer.name.charAt(
+        0
+      )}" class="profile-avatar-img">`;
+    } else {
+      avatarHtml = customer.name.charAt(0).toUpperCase();
+    }
+    // --- END AVATAR LOGIC ---
+
+    modalBody.innerHTML = `<div class="details-view-grid"><div class="customer-profile-panel"><div class="profile-header">
+    
+    <div class="profile-avatar">${avatarHtml}</div>
+
+    <h3 class="profile-name">${customer.name}</h3><p class="profile-contact">${
       customer.phone || "N/A"
     }</p></div><div class="profile-section"><h4>Personal & Loan Details</h4>
-    <div class="profile-stat"><span class="label">Loan Given Date</span><span class="value">${
-      dispDate(details.loanGivenDate)
-    }</span></div>
-    <div class="profile-stat"><span class="label">Date of Birth</span><span class="value">${
-      dispDate(customer.dob)
-    }</span></div>
-    <div class="profile-stat"><span class="label">First Collection</span><span class="value">${
-      dispDate(details.firstCollectionDate)
-    }</span></div>
-    <div class="profile-stat"><span class="label">Last Loan Date</span><span class="value">${
-      dispDate(schedule && schedule.length > 0 ? schedule[schedule.length - 1].dueDate : null)
-    }</span></div>
+    <div class="profile-stat"><span class="label">Loan Given Date</span><span class="value">${dispDate(
+      details.loanGivenDate
+    )}</span></div>
+    <div class="profile-stat"><span class="label">Date of Birth</span><span class="value">${dispDate(
+      customer.dob
+    )}</span></div>
+    <div class="profile-stat"><span class="label">First Collection</span><span class="value">${dispDate(
+      details.firstCollectionDate
+    )}</span></div>
+    <div class="profile-stat"><span class="label">Last Loan Date</span><span class="value">${dispDate(
+      schedule && schedule.length > 0
+        ? schedule[schedule.length - 1].dueDate
+        : null
+    )}</span></div>
     </div>
     <div class="profile-section"><h4>Customer Loan Totals</h4>
       ${(() => {
-        const allLoans = [...window.allCustomers.active, ...window.allCustomers.settled]
-          .filter((c) => c.name === customer.name && c.loanDetails && c.paymentSchedule);
-        let totalP = 0, totalI = 0, totalPaidAll = 0;
+        const allLoans = [
+          ...window.allCustomers.active,
+          ...window.allCustomers.settled,
+        ].filter(
+          (c) => c.name === customer.name && c.loanDetails && c.paymentSchedule
+        );
+        let totalP = 0,
+          totalI = 0,
+          totalPaidAll = 0;
         allLoans.forEach((c) => {
           const li = c.loanDetails;
           const interest = calculateTotalInterest(
@@ -1298,12 +1340,21 @@ document.addEventListener("DOMContentLoaded", () => {
           );
           totalP += Number(li.principal || 0);
           totalI += Number(interest || 0);
-          totalPaidAll += c.paymentSchedule.reduce((s, p) => s + (p.amountPaid || 0), 0);
+          totalPaidAll += c.paymentSchedule.reduce(
+            (s, p) => s + (p.amountPaid || 0),
+            0
+          );
         });
         const outstanding = Math.max(0, totalP + totalI - totalPaidAll);
-        return `<div class="profile-stat"><span class="label">Total Principal (All Loans)</span><span class="value">${formatCurrency(totalP)}</span></div>
-                <div class="profile-stat"><span class="label">Total Interest (All Loans)</span><span class="value">${formatCurrency(totalI)}</span></div>
-                <div class="profile-stat"><span class="label">Outstanding (All Loans)</span><span class="value">${formatCurrency(outstanding)}</span></div>`;
+        return `<div class="profile-stat"><span class="label">Total Principal (All Loans)</span><span class="value">${formatCurrency(
+          totalP
+        )}</span></div>
+                <div class="profile-stat"><span class="label">Total Interest (All Loans)</span><span class="value">${formatCurrency(
+                  totalI
+                )}</span></div>
+                <div class="profile-stat"><span class="label">Outstanding (All Loans)</span><span class="value">${formatCurrency(
+                  outstanding
+                )}</span></div>`;
       })()}
     </div>
     <div class="profile-section"><h4>KYC Documents</h4><div class="profile-stat"><span class="label">Aadhar Card</span>${aadharButton}</div><div class="profile-stat"><span class="label">PAN Card</span>${panButton}</div><div class="profile-stat"><span class="label">Client Photo</span>${picButton}</div><div class="profile-stat"><span class="label">Bank Details</span>${bankButton}</div>
@@ -1331,7 +1382,6 @@ document.addEventListener("DOMContentLoaded", () => {
     )}</span></div><div class="summary-stat-item"><span class="label">Amount Remaining</span><span class="value remaining">${formatCurrency(
       remainingToCollect
     )}</span></div></div></div></div>`;
-    // --- END UPDATED ---
 
     const emiTableBody = modalBody.querySelector("#emi-schedule-body-details");
     const today = new Date();
@@ -1362,20 +1412,17 @@ document.addEventListener("DOMContentLoaded", () => {
       if (customer.status === "active" && inst.amountPaid > 0) {
         actionButtons += `<button class="btn btn-outline btn-sm record-payment-btn" data-installment="${inst.installment}" data-id="${customer.id}">Edit</button>`;
       }
-      // Use the dispDate helper function here
       const displayedDue = dispDate(inst.dueDate);
 
-      // --- NEW: Get MoP for display ---
-      const paymentMop = inst.amountPaid > 0 ? (inst.modeOfPayment || 'N/A') : '';
-      // --- END NEW ---
+      const paymentMop = inst.amountPaid > 0 ? inst.modeOfPayment || "N/A" : "";
 
-      // --- UPDATED: Added MoP cell ---
-      tr.innerHTML = `<td>${inst.installment}</td><td>${displayedDue}</td><td>${formatCurrency(
+      tr.innerHTML = `<td>${
+        inst.installment
+      }</td><td>${displayedDue}</td><td>${formatCurrency(
         inst.amountDue
       )}</td><td>${formatCurrency(
         inst.amountPaid
       )}</td><td>${paymentMop}</td><td><span class="emi-status status-${statusClass}">${statusText}</span></td><td class="no-pdf">${actionButtons}</td>`;
-      // --- END UPDATED ---
 
       emiTableBody.appendChild(tr);
     });
@@ -1398,7 +1445,6 @@ document.addEventListener("DOMContentLoaded", () => {
         customerName: customerToSettle.name,
         financeCount: customerToSettle.financeCount || 1,
       });
-      // Renumber remaining active loans for this customer name after settling one
       try {
         await renumberActiveLoansByCustomerName(customerToSettle.name);
       } catch (e) {
@@ -1417,9 +1463,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // --- NEW FUNCTION ---
   async function restoreLoanById(loanId) {
-    // Find the customer in the settled list
     const customerToRestore = window.allCustomers.settled.find(
       (c) => c.id === loanId
     );
@@ -1428,19 +1472,13 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     try {
-      // Set status back to 'active'
-      await db
-        .collection("customers")
-        .doc(loanId)
-        .update({ status: "active" });
+      await db.collection("customers").doc(loanId).update({ status: "active" });
 
-      // Log the restoration activity
       await logActivity("LOAN_RESTORED", {
         customerName: customerToRestore.name,
         financeCount: customerToRestore.financeCount || 1,
       });
 
-      // CRITICAL: Renumber all active loans for this customer
       try {
         await renumberActiveLoansByCustomerName(customerToRestore.name);
       } catch (e) {
@@ -1450,18 +1488,14 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast(
         "success",
         "Loan Restored",
-        `Finance ${
-          customerToRestore.financeCount || 1
-        } moved back to active.`
+        `Finance ${customerToRestore.financeCount || 1} moved back to active.`
       );
 
-      // Reload all data to refresh lists
       await loadAndRenderAll();
     } catch (error) {
       showToast("error", "Restore Failed", error.message);
     }
   }
-  // --- END NEW FUNCTION ---
 
   auth.onAuthStateChanged(async (user) => {
     currentUser = user;
@@ -1499,7 +1533,6 @@ document.addEventListener("DOMContentLoaded", () => {
       if (n <= 0) {
         throw new Error("Invalid date range for the selected frequency.");
       }
-      // Use the selected Loan Given Date if provided
       const loanGivenDate = getEl("loan-given-date")?.value || new Date();
       const totalInterest = calculateTotalInterest(
         p,
@@ -1510,13 +1543,16 @@ document.addEventListener("DOMContentLoaded", () => {
       const totalRepayable = p + totalInterest;
       const minInstallment = +(totalRepayable / n).toFixed(2);
 
-      // Build interactive UI to allow custom amount (>= minimum)
       previewDiv.innerHTML = `
         <div class="calc-flex">
-          <p style="margin:0 0 .5rem 0">Calculated: <strong>${n} installments</strong> of approx. <strong>${formatCurrency(minInstallment)}</strong> each.</p>
+          <p style="margin:0 0 .5rem 0">Calculated: <strong>${n} installments</strong> of approx. <strong>${formatCurrency(
+        minInstallment
+      )}</strong> each.</p>
           <div class="form-row" style="align-items:end; grid-template-columns: 1fr 1fr; gap: 1rem;">
             <div class="form-group" style="margin:0">
-              <label for="custom-installment-amount">Choose per-installment amount (min ${formatCurrency(minInstallment)})</label>
+              <label for="custom-installment-amount">Choose per-installment amount (min ${formatCurrency(
+                minInstallment
+              )})</label>
               <input type="number" step="0.01" min="${minInstallment}" value="${minInstallment}" id="custom-installment-amount" class="form-control" />
             </div>
             <div class="form-group" style="margin:0">
@@ -1535,8 +1571,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const applyValue = () => {
         let raw = inputEl.value;
         if (raw === "" || raw === null) {
-          // show empty without recalculating yet
-          summaryEl.innerHTML = `<span>Enter an amount ≥ ${formatCurrency(minInstallment)}</span>`;
+          summaryEl.innerHTML = `<span>Enter an amount ≥ ${formatCurrency(
+            minInstallment
+          )}</span>`;
           inputEl.classList.remove("invalid");
           return;
         }
@@ -1547,21 +1584,29 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         if (chosen < minInstallment) {
           inputEl.classList.add("invalid");
-          summaryEl.innerHTML = `<span style="color:var(--danger)">Amount is below minimum ${formatCurrency(minInstallment)}</span>`;
+          summaryEl.innerHTML = `<span style="color:var(--danger)">Amount is below minimum ${formatCurrency(
+            minInstallment
+          )}</span>`;
           return;
         }
         inputEl.classList.remove("invalid");
-        // recompute using cents to avoid rounding issues
-  const totalCents = Math.round(totalRepayable * 100);
-  const chosenCents = Math.round(chosen * 100);
-  const newN = Math.max(1, Math.ceil(totalCents / chosenCents));
+        const totalCents = Math.round(totalRepayable * 100);
+        const chosenCents = Math.round(chosen * 100);
+        const newN = Math.max(1, Math.ceil(totalCents / chosenCents));
         const newEnd = computeEndDateFromInstallments(firstDate, newN, freq);
         hiddenN.value = String(newN);
         hiddenEnd.value = newEnd;
-  const remainderCents = totalCents - chosenCents * (newN - 1);
-  const lastAmt = +(remainderCents / 100).toFixed(2);
-  const lastInfo = lastAmt !== chosen ? ` &nbsp;|&nbsp; <span>Last: <strong>${formatCurrency(lastAmt)}</strong></span>` : "";
-  summaryEl.innerHTML = `<span><strong>${newN}</strong> installments</span> &nbsp;|&nbsp; <span>Per installment: <strong>${formatCurrency(chosen)}</strong></span>${lastInfo} &nbsp;|&nbsp; <span>Ends on: <strong>${newEnd}</strong></span>`;
+        const remainderCents = totalCents - chosenCents * (newN - 1);
+        const lastAmt = +(remainderCents / 100).toFixed(2);
+        const lastInfo =
+          lastAmt !== chosen
+            ? ` &nbsp;|&nbsp; <span>Last: <strong>${formatCurrency(
+                lastAmt
+              )}</strong></span>`
+            : "";
+        summaryEl.innerHTML = `<span><strong>${newN}</strong> installments</span> &nbsp;|&nbsp; <span>Per installment: <strong>${formatCurrency(
+          chosen
+        )}</strong></span>${lastInfo} &nbsp;|&nbsp; <span>Ends on: <strong>${newEnd}</strong></span>`;
       };
       inputEl.addEventListener("keydown", (ev) => {
         if (ev.key === "Enter") {
@@ -1570,7 +1615,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       });
       inputEl.addEventListener("blur", applyValue);
-      // Start empty to let user type freely
       inputEl.value = String(minInstallment);
       applyValue();
       previewDiv.classList.remove("error", "hidden");
@@ -1599,7 +1643,10 @@ document.addEventListener("DOMContentLoaded", () => {
       if (n <= 0) {
         throw new Error("Invalid date range for the selected frequency.");
       }
-      const loanGivenDate = getEl("new-loan-given-date")?.value || getEl("loan-given-date")?.value || new Date();
+      const loanGivenDate =
+        getEl("new-loan-given-date")?.value ||
+        getEl("loan-given-date")?.value ||
+        new Date();
       const totalInterest = calculateTotalInterest(
         p,
         r,
@@ -1611,10 +1658,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
       previewDiv.innerHTML = `
         <div class="calc-flex">
-          <p style="margin:0 0 .5rem 0">New Loan: <strong>${n} installments</strong> of approx. <strong>${formatCurrency(minInstallment)}</strong> each.</p>
+          <p style="margin:0 0 .5rem 0">New Loan: <strong>${n} installments</strong> of approx. <strong>${formatCurrency(
+        minInstallment
+      )}</strong> each.</p>
           <div class="form-row" style="align-items:end; grid-template-columns: 1fr 1fr; gap: 1rem;">
             <div class="form-group" style="margin:0">
-              <label for="new-loan-custom-installment-amount">Choose per-installment amount (min ${formatCurrency(minInstallment)})</label>
+              <label for="new-loan-custom-installment-amount">Choose per-installment amount (min ${formatCurrency(
+                minInstallment
+              )})</label>
               <input type="number" step="0.01" min="${minInstallment}" value="${minInstallment}" id="new-loan-custom-installment-amount" class="form-control" />
             </div>
             <div class="form-group" style="margin:0">
@@ -1633,7 +1684,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const applyValue = () => {
         let raw = inputEl.value;
         if (raw === "" || raw === null) {
-          summaryEl.innerHTML = `<span>Enter an amount ≥ ${formatCurrency(minInstallment)}</span>`;
+          summaryEl.innerHTML = `<span>Enter an amount ≥ ${formatCurrency(
+            minInstallment
+          )}</span>`;
           inputEl.classList.remove("invalid");
           return;
         }
@@ -1644,23 +1697,31 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         if (chosen < minInstallment) {
           inputEl.classList.add("invalid");
-          summaryEl.innerHTML = `<span style="color:var(--danger)"><strong>Amount is below minimum ${formatCurrency(minInstallment)}</strong></span>`;
+          summaryEl.innerHTML = `<span style="color:var(--danger)"><strong>Amount is below minimum ${formatCurrency(
+            minInstallment
+          )}</strong></span>`;
           return;
         }
         inputEl.classList.remove("invalid");
-  const totalCents = Math.round(totalRepayable * 100);
-  const chosenCents = Math.round(chosen * 100);
-  const newN = Math.max(1, Math.ceil(totalCents / chosenCents));
+        const totalCents = Math.round(totalRepayable * 100);
+        const chosenCents = Math.round(chosen * 100);
+        const newN = Math.max(1, Math.ceil(totalCents / chosenCents));
         const newEnd = computeEndDateFromInstallments(firstDate, newN, freq);
         hiddenN.value = String(newN);
         hiddenEnd.value = newEnd;
-    // Keep the visible end-date field in sync with the computed end date
-    const endDateField = getEl("new-loan-end-date");
-    if (endDateField) endDateField.value = newEnd;
-  const remainderCents = totalCents - chosenCents * (newN - 1);
-  const lastAmt = +(remainderCents / 100).toFixed(2);
-  const lastInfo = lastAmt !== chosen ? ` &nbsp;|&nbsp; <span>Last: <strong>${formatCurrency(lastAmt)}</strong></span>` : "";
-  summaryEl.innerHTML = `<span><strong>${newN}</strong> installments</span> &nbsp;|&nbsp; <span>Per installment: <strong>${formatCurrency(chosen)}</strong></span>${lastInfo} &nbsp;|&nbsp; <span>Ends on: <strong>${newEnd}</strong></span>`;
+        const endDateField = getEl("new-loan-end-date");
+        if (endDateField) endDateField.value = newEnd;
+        const remainderCents = totalCents - chosenCents * (newN - 1);
+        const lastAmt = +(remainderCents / 100).toFixed(2);
+        const lastInfo =
+          lastAmt !== chosen
+            ? ` &nbsp;|&nbsp; <span>Last: <strong>${formatCurrency(
+                lastAmt
+              )}</strong></span>`
+            : "";
+        summaryEl.innerHTML = `<span><strong>${newN}</strong> installments</span> &nbsp;|&nbsp; <span>Per installment: <strong>${formatCurrency(
+          chosen
+        )}</strong></span>${lastInfo} &nbsp;|&nbsp; <span>Ends on: <strong>${newEnd}</strong></span>`;
       };
       inputEl.addEventListener("keydown", (ev) => {
         if (ev.key === "Enter") {
@@ -1683,11 +1744,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const freq = getEl("collection-frequency").value;
     const firstDateInput = getEl("first-collection-date");
     const givenInput = getEl("loan-given-date");
-    const base = givenInput && givenInput.value
-      ? parseDateFlexible(givenInput.value)
-      : new Date();
+    const base =
+      givenInput && givenInput.value
+        ? parseDateFlexible(givenInput.value)
+        : new Date();
 
-    // First collection is after the loan is given
     if (freq === "daily") {
       base.setDate(base.getDate() + 1);
     } else if (freq === "weekly") {
@@ -1695,7 +1756,6 @@ document.addEventListener("DOMContentLoaded", () => {
     } else if (freq === "monthly") {
       base.setMonth(base.getMonth() + 1);
     }
-    // Keep dd-mm-yyyy format in UI
     firstDateInput.value = formatForInput({ id: "any" }, base);
     firstDateInput.dispatchEvent(new Event("change"));
   }
@@ -1704,11 +1764,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const freq = getEl("new-loan-frequency").value;
     const firstDateInput = getEl("new-loan-start-date");
     const givenInput = getEl("new-loan-given-date");
-    const base = givenInput && givenInput.value
-      ? parseDateFlexible(givenInput.value)
-      : new Date();
+    const base =
+      givenInput && givenInput.value
+        ? parseDateFlexible(givenInput.value)
+        : new Date();
 
-    // First collection after loan given
     if (freq === "daily") {
       base.setDate(base.getDate() + 1);
     } else if (freq === "weekly") {
@@ -1718,9 +1778,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     firstDateInput.value = formatForInput({ id: "any" }, base);
     firstDateInput.dispatchEvent(new Event("change"));
-    // Also propose a default end date with 2 installments window
     try {
-      const endDefault = computeEndDateFromInstallments(firstDateInput.value, 2, freq);
+      const endDefault = computeEndDateFromInstallments(
+        firstDateInput.value,
+        2,
+        freq
+      );
       const endInput = getEl("new-loan-end-date");
       if (endInput) endInput.value = endDefault;
     } catch (_) {}
@@ -1774,7 +1837,6 @@ document.addEventListener("DOMContentLoaded", () => {
       if (target.id === "forgot-password-link") {
         e.preventDefault();
         getEl("reset-password-modal").classList.add("show");
-        // Focus the email field for immediate input
         setTimeout(() => {
           getEl("reset-email")?.focus();
         }, 0);
@@ -1849,26 +1911,21 @@ document.addEventListener("DOMContentLoaded", () => {
           modal.querySelector(".payment-customer-avatar").textContent =
             customer.name.charAt(0).toUpperCase();
           getEl("payment-installment-display").textContent = installmentNum;
-          // Show remaining due (EMI - already paid), not the full installment
           const existingPaid = Number(installment.amountPaid || 0);
           const computedPending =
-            installment.pendingAmount !== undefined && installment.pendingAmount !== null
+            installment.pendingAmount !== undefined &&
+            installment.pendingAmount !== null
               ? Number(installment.pendingAmount)
               : Math.max(0, Number(installment.amountDue) - existingPaid);
-          getEl("payment-due-display").textContent = formatCurrency(
-            computedPending
-          );
+          getEl("payment-due-display").textContent =
+            formatCurrency(computedPending);
 
           const paymentAmountInput = getEl("payment-amount");
-          // Do not prefill with previously paid; user enters the additional payment
           paymentAmountInput.value = "";
-          // Cap input to remaining amount only
           paymentAmountInput.setAttribute("max", computedPending);
 
-          // --- NEW: Set MoP dropdown ---
           const paymentMopInput = getEl("payment-mop");
-          paymentMopInput.value = installment.modeOfPayment || ""; // Set to "" to select the disabled "Select Mode..."
-          // --- END NEW ---
+          paymentMopInput.value = installment.modeOfPayment || "";
 
           const updatePendingDisplay = () => {
             const payNow = parseFloat(paymentAmountInput.value) || 0;
@@ -1889,7 +1946,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
           const payFullBtn = getEl("pay-full-btn");
           payFullBtn.onclick = () => {
-            // Fill with remaining due, not the original installment amount
             paymentAmountInput.value = computedPending;
             updatePendingDisplay();
             paymentAmountInput.focus();
@@ -1912,13 +1968,14 @@ document.addEventListener("DOMContentLoaded", () => {
               }
             }
           );
-        // --- NEW EVENT LISTENER ---
         } else if (button.classList.contains("restore-customer-btn")) {
           const customerId = button.dataset.id;
-          const customer = window.allCustomers.settled.find(c => c.id === customerId);
+          const customer = window.allCustomers.settled.find(
+            (c) => c.id === customerId
+          );
           const customerName = customer ? customer.name : "this loan";
-          const financeCount = customer ? (customer.financeCount || 1) : "";
-          
+          const financeCount = customer ? customer.financeCount || 1 : "";
+
           showConfirmation(
             "Restore Loan?",
             `This will move Finance ${financeCount} for ${customerName} from 'Settled' back to 'Active'. Are you sure?`,
@@ -1926,7 +1983,6 @@ document.addEventListener("DOMContentLoaded", () => {
               await restoreLoanById(customerId);
             }
           );
-        // --- END NEW EVENT LISTENER ---
         } else if (button.classList.contains("delete-customer-btn")) {
           const customerId = button.dataset.id;
           showConfirmation(
@@ -1935,9 +1991,7 @@ document.addEventListener("DOMContentLoaded", () => {
             async () => {
               try {
                 await deleteSingleCustomerCascade(customerId);
-                // Renumber remaining active loans for this customer name
                 const res = await deleteSingleCustomerCascade(customerId);
-                // Renumber remaining active loans for this customer name
                 if (res && res.name) {
                   try {
                     await renumberActiveLoansByCustomerName(res.name);
@@ -1979,13 +2033,16 @@ document.addEventListener("DOMContentLoaded", () => {
                   toggleButtonLoading(btn, false);
                   return;
                 }
-                // Delete each settled customer and its files
                 for (const doc of querySnapshot.docs) {
                   const data = doc.data();
                   try {
                     await deleteSingleCustomerCascade(doc.id, data);
                   } catch (e) {
-                    console.warn("Failed to delete settled record:", doc.id, e.message || e);
+                    console.warn(
+                      "Failed to delete settled record:",
+                      doc.id,
+                      e.message || e
+                    );
                   }
                 }
                 showToast(
@@ -2033,25 +2090,25 @@ document.addEventListener("DOMContentLoaded", () => {
           getEl("customer-form").reset();
           getEl("customer-id").value = "";
           getEl("customer-form-modal-title").textContent = "Add New Customer";
-          // Default Loan Given Date to today and derive first collection
           const todayStr = formatForInput({ id: "any" }, new Date());
           const lgd = getEl("loan-given-date");
           if (lgd) lgd.value = todayStr;
           setAutomaticFirstDate();
-          
-          getEl("loan-mop").value = "Cash"; // --- NEW: Default MoP
+
+          getEl("loan-mop").value = "Cash";
 
           getEl("personal-info-fields").style.display = "block";
           getEl("kyc-info-fields").style.display = "block";
           getEl("loan-details-fields").style.display = "block";
-          if (typeof setLoanDetailFieldsRequired === 'function') setLoanDetailFieldsRequired(true);
+          if (typeof setLoanDetailFieldsRequired === "function")
+            setLoanDetailFieldsRequired(true);
           getEl("installment-preview").classList.add("hidden");
 
           document
             .querySelectorAll(".file-input-label span")
             .forEach((span) => {
               span.textContent = "Choose a file...";
-              const lbl = span.closest('.file-input-label');
+              const lbl = span.closest(".file-input-label");
               if (lbl) lbl.title = "";
             });
           getEl("customer-form-modal").classList.add("show");
@@ -2075,15 +2132,15 @@ document.addEventListener("DOMContentLoaded", () => {
           getEl("customer-bank-name").value = customer.bankName || "";
           getEl("customer-account-number").value = customer.accountNumber || "";
           getEl("customer-ifsc").value = customer.ifsc || "";
-          
-          // --- NEW: Populate MoP dropdown on Edit ---
-          getEl("loan-mop").value = customer.loanDetails?.modeOfPayment || "Cash";
-          // --- END NEW ---
+
+          getEl("loan-mop").value =
+            customer.loanDetails?.modeOfPayment || "Cash";
 
           getEl("personal-info-fields").style.display = "block";
           getEl("kyc-info-fields").style.display = "block";
           getEl("loan-details-fields").style.display = "none";
-          if (typeof setLoanDetailFieldsRequired === 'function') setLoanDetailFieldsRequired(false);
+          if (typeof setLoanDetailFieldsRequired === "function")
+            setLoanDetailFieldsRequired(false);
           getEl("installment-preview").classList.add("hidden");
 
           getEl("customer-form-modal-title").textContent = "Edit Customer Info";
@@ -2155,16 +2212,27 @@ document.addEventListener("DOMContentLoaded", () => {
             );
           }
         } else if (button.id === "settle-all-btn") {
-          const firstInput = document.querySelector('input[name="settle-loan"]');
+          const firstInput = document.querySelector(
+            'input[name="settle-loan"]'
+          );
           if (!firstInput) {
-            showToast("error", "No Loans", "No active loans found for this customer.");
+            showToast(
+              "error",
+              "No Loans",
+              "No active loans found for this customer."
+            );
             return;
           }
-          // Radios exist for all active loans for this customer
-          const inputs = Array.from(document.querySelectorAll('input[name="settle-loan"]'));
+          const inputs = Array.from(
+            document.querySelectorAll('input[name="settle-loan"]')
+          );
           const loanIds = inputs.map((r) => r.value);
           if (loanIds.length === 0) {
-            showToast("error", "No Loans", "No active loans found for this customer.");
+            showToast(
+              "error",
+              "No Loans",
+              "No active loans found for this customer."
+            );
             return;
           }
           showConfirmation(
@@ -2175,7 +2243,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 for (const id of loanIds) {
                   await settleLoanById(id);
                 }
-                showToast("success", "All Settled", "All active loans for the customer have been settled.");
+                showToast(
+                  "success",
+                  "All Settled",
+                  "All active loans for the customer have been settled."
+                );
               } catch (err) {
                 showToast("error", "Failed", err.message || String(err));
               }
@@ -2191,29 +2263,31 @@ document.addEventListener("DOMContentLoaded", () => {
           getEl("new-loan-customer-id").value = customerId;
           getEl("new-loan-form").reset();
 
-          // Default Loan Given Date to today and set first collection accordingly
-          const todayStr = formatForInput({id:'any'}, new Date());
+          const todayStr = formatForInput({ id: "any" }, new Date());
           const nlgd = getEl("new-loan-given-date");
           if (nlgd) nlgd.value = todayStr;
-          // Derive first date from given + frequency
           const freq = getEl("new-loan-frequency").value;
           let base = new Date();
           if (freq === "daily") base.setDate(base.getDate() + 1);
           else if (freq === "weekly") base.setDate(base.getDate() + 7);
           else if (freq === "monthly") base.setMonth(base.getMonth() + 1);
-          getEl("new-loan-start-date").value = formatForInput({id:'any'}, base);
-          
-          getEl("new-loan-mop").value = "Cash"; // --- NEW: Default MoP
+          getEl("new-loan-start-date").value = formatForInput(
+            { id: "any" },
+            base
+          );
 
-          // Also set a sensible default Loan End Date based on one more period (n = 2)
+          getEl("new-loan-mop").value = "Cash";
+
           try {
             const startStr = getEl("new-loan-start-date").value;
-            const endDefault = computeEndDateFromInstallments(startStr, 2, freq);
+            const endDefault = computeEndDateFromInstallments(
+              startStr,
+              2,
+              freq
+            );
             const endInput = getEl("new-loan-end-date");
             if (endInput) endInput.value = endDefault;
-          } catch (_) {
-            // If anything fails, leave end date empty; user can set it manually
-          }
+          } catch (_) {}
 
           getEl("new-loan-installment-preview").classList.add("hidden");
           getEl("new-loan-modal").classList.add("show");
@@ -2331,7 +2405,11 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
           const email = getEl("reset-email").value.trim();
           await auth.sendPasswordResetEmail(email);
-          showToast("success", "Email Sent", "Password reset link sent to your email.");
+          showToast(
+            "success",
+            "Email Sent",
+            "Password reset link sent to your email."
+          );
           getEl("reset-password-modal").classList.remove("show");
         } catch (error) {
           showToast("error", "Error", error.message);
@@ -2341,7 +2419,6 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
       if (form.id === "customer-form") {
-        // Enforce HTML validation first
         if (!form.checkValidity()) {
           form.reportValidity();
           return;
@@ -2366,7 +2443,6 @@ document.addEventListener("DOMContentLoaded", () => {
             whatsapp: getEl("customer-whatsapp").value,
             aadharNumber: getEl("customer-aadhar-number").value.trim(),
             panNumber: getEl("customer-pan-number").value.trim().toUpperCase(),
-            // NEW bank fields
             bankName: getEl("customer-bank-name")?.value || "",
             accountNumber: getEl("customer-account-number")?.value || "",
             ifsc: getEl("customer-ifsc")?.value || "",
@@ -2426,9 +2502,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (bankDetailsUrl)
               finalUpdate["kycDocs.bankDetailsUrl"] = bankDetailsUrl;
 
-            // --- NEW: Save MoP on Edit ---
             finalUpdate["loanDetails.modeOfPayment"] = getEl("loan-mop").value;
-            // --- END NEW ---
 
             await db.collection("customers").doc(id).update(finalUpdate);
             reopenAfterSaveId = id;
@@ -2460,21 +2534,21 @@ document.addEventListener("DOMContentLoaded", () => {
             const firstDate = getEl("first-collection-date").value;
             const endDate = getEl("loan-end-date").value;
 
-            // Base tenure from the date range
             const nBase = calculateInstallments(firstDate, endDate, freq);
 
             if (isNaN(p) || isNaN(r) || isNaN(nBase) || !firstDate)
               throw new Error("Please fill all loan detail fields correctly.");
 
             const loanGivenDate = getEl("loan-given-date")?.value || new Date();
-            const lgdDate = typeof loanGivenDate === 'string' ? parseDateFlexible(loanGivenDate) : loanGivenDate;
-            const lgdStr = formatForInput({id:'any'}, lgdDate);
+            const lgdDate =
+              typeof loanGivenDate === "string"
+                ? parseDateFlexible(loanGivenDate)
+                : loanGivenDate;
+            const lgdStr = formatForInput({ id: "any" }, lgdDate);
 
-            // Keep total interest constant using provided dates for interest calculation
             const totalRepayable =
               p + calculateTotalInterest(p, r, lgdStr, endDate);
 
-            // If user provided a custom per-installment amount, recompute number of installments and end date
             const customAmtInput = getEl("custom-installment-amount");
             let chosenN = nBase;
             let chosenEndDate = endDate;
@@ -2482,7 +2556,8 @@ document.addEventListener("DOMContentLoaded", () => {
             if (customAmtInput) {
               const minInstallment = +(totalRepayable / nBase).toFixed(2);
               let chosenAmt = parseFloat(customAmtInput.value);
-              if (!chosenAmt || isNaN(chosenAmt) || chosenAmt < minInstallment) chosenAmt = minInstallment;
+              if (!chosenAmt || isNaN(chosenAmt) || chosenAmt < minInstallment)
+                chosenAmt = minInstallment;
               chosenN = Math.max(1, Math.ceil(totalRepayable / chosenAmt));
               chosenEndDate = computeEndDateFromInstallments(
                 firstDate,
@@ -2502,15 +2577,17 @@ document.addEventListener("DOMContentLoaded", () => {
               frequency: freq,
               loanGivenDate: lgdStr,
               firstCollectionDate: firstDate,
-              // Keep original endDate here so interest stays constant across the app
               loanEndDate: endDate,
               type: "simple_interest",
-              modeOfPayment: getEl("loan-mop").value, // --- NEW: Save MoP ---
+              modeOfPayment: getEl("loan-mop").value,
             };
 
             let paymentSchedule = schedule
               ? schedule
-              : generateSimpleInterestSchedule(+totalRepayable.toFixed(2), nBase);
+              : generateSimpleInterestSchedule(
+                  +totalRepayable.toFixed(2),
+                  nBase
+                );
 
             let currentDate = parseDateFlexible(firstDate);
             paymentSchedule.forEach((inst, index) => {
@@ -2524,7 +2601,6 @@ document.addEventListener("DOMContentLoaded", () => {
                   currentDate = addMonthsPreserveAnchor(base, index);
                 }
               }
-              // save ISO yyyy-mm-dd but compute using parsed date
               inst.dueDate = new Date(currentDate).toISOString().split("T")[0];
             });
 
@@ -2536,7 +2612,6 @@ document.addEventListener("DOMContentLoaded", () => {
             customerData.status = "active";
             customerData.financeCount = 1;
 
-            // Persist bank fields on creation too (already in customerData)
             toggleButtonLoading(saveBtn, true, "Saving Customer...");
             const docRef = await db.collection("customers").add(customerData);
             reopenAfterSaveId = docRef.id;
@@ -2568,13 +2643,11 @@ document.addEventListener("DOMContentLoaded", () => {
             10
           );
           const amountPaidNow = parseFloat(getEl("payment-amount").value) || 0;
-          
-          // --- NEW: Get MoP ---
+
           const mop = getEl("payment-mop").value;
           if (!mop) {
             throw new Error("Please select a mode of payment.");
           }
-          // --- END NEW ---
 
           const customer = window.allCustomers.active.find(
             (c) => c.id === customerId
@@ -2591,11 +2664,14 @@ document.addEventListener("DOMContentLoaded", () => {
           const installment = updatedSchedule[instIndex];
           const prevPaid = Number(installment.amountPaid || 0);
           const newTotalPaid = Math.max(0, prevPaid + amountPaidNow);
-          const pending = Math.max(0, Number(installment.amountDue) - newTotalPaid);
+          const pending = Math.max(
+            0,
+            Number(installment.amountDue) - newTotalPaid
+          );
           installment.amountPaid = newTotalPaid;
           installment.pendingAmount = pending;
           installment.paidDate = new Date().toISOString();
-          installment.modeOfPayment = mop; // --- NEW: Save MoP ---
+          installment.modeOfPayment = mop;
 
           if (pending <= 0.001) {
             installment.status = "Paid";
@@ -2605,7 +2681,7 @@ document.addEventListener("DOMContentLoaded", () => {
           } else {
             installment.status = "Due";
             installment.paidDate = null;
-            installment.modeOfPayment = null; // --- NEW: Clear MoP if payment is 0 ---
+            installment.modeOfPayment = null;
           }
 
           await db
@@ -2682,13 +2758,18 @@ document.addEventListener("DOMContentLoaded", () => {
           if (isNaN(p) || isNaN(r) || isNaN(nBase) || !firstDate || !endDate)
             throw new Error("Please fill all new loan fields correctly.");
 
-          const loanGivenRaw = getEl("new-loan-given-date")?.value || getEl("loan-given-date")?.value || new Date();
-          const loanGivenDate = typeof loanGivenRaw === 'string' ? parseDateFlexible(loanGivenRaw) : loanGivenRaw;
+          const loanGivenRaw =
+            getEl("new-loan-given-date")?.value ||
+            getEl("loan-given-date")?.value ||
+            new Date();
+          const loanGivenDate =
+            typeof loanGivenRaw === "string"
+              ? parseDateFlexible(loanGivenRaw)
+              : loanGivenRaw;
 
-          // Keep total interest same based on provided range
-          const totalRepayable = p + calculateTotalInterest(p, r, loanGivenDate, endDate);
+          const totalRepayable =
+            p + calculateTotalInterest(p, r, loanGivenDate, endDate);
 
-          // Apply custom per-installment if provided
           const customAmtInput = getEl("new-loan-custom-installment-amount");
           let chosenN = nBase;
           let chosenEndDate = endDate;
@@ -2696,9 +2777,14 @@ document.addEventListener("DOMContentLoaded", () => {
           if (customAmtInput) {
             const minInstallment = +(totalRepayable / nBase).toFixed(2);
             let chosenAmt = parseFloat(customAmtInput.value);
-            if (!chosenAmt || isNaN(chosenAmt) || chosenAmt < minInstallment) chosenAmt = minInstallment;
+            if (!chosenAmt || isNaN(chosenAmt) || chosenAmt < minInstallment)
+              chosenAmt = minInstallment;
             chosenN = Math.max(1, Math.ceil(totalRepayable / chosenAmt));
-            chosenEndDate = computeEndDateFromInstallments(firstDate, chosenN, freq);
+            chosenEndDate = computeEndDateFromInstallments(
+              firstDate,
+              chosenN,
+              freq
+            );
             schedule = generateScheduleWithInstallmentAmount(
               +totalRepayable.toFixed(2),
               +chosenAmt.toFixed(2)
@@ -2712,7 +2798,6 @@ document.addEventListener("DOMContentLoaded", () => {
             address: baseCustomer.address,
             whatsapp: baseCustomer.whatsapp,
             kycDocs: baseCustomer.kycDocs || {},
-            // carry over bank details to the new loan record
             bankName: baseCustomer.bankName || "",
             accountNumber: baseCustomer.accountNumber || "",
             ifsc: baseCustomer.ifsc || "",
@@ -2725,23 +2810,26 @@ document.addEventListener("DOMContentLoaded", () => {
               interestRate: r,
               installments: chosenN,
               frequency: freq,
-              loanGivenDate: formatForInput({ id: 'any' }, loanGivenDate),
+              loanGivenDate: formatForInput({ id: "any" }, loanGivenDate),
               firstCollectionDate: firstDate,
-              // Keep original endDate to preserve interest total
               loanEndDate: endDate,
               type: "simple_interest",
-              modeOfPayment: getEl("new-loan-mop").value, // --- NEW: Save MoP ---
+              modeOfPayment: getEl("new-loan-mop").value,
             },
           };
 
-          // If user adjusted per-installment, prefer the chosenN from the preview; otherwise use base n
           const chosenHiddenN = getEl("new-loan-chosen-n-installments");
-          const effectiveN = chosenHiddenN && chosenHiddenN.value ? parseInt(chosenHiddenN.value, 10) : nBase;
+          const effectiveN =
+            chosenHiddenN && chosenHiddenN.value
+              ? parseInt(chosenHiddenN.value, 10)
+              : nBase;
           let paymentSchedule = schedule
             ? schedule
-            : generateSimpleInterestSchedule(+totalRepayable.toFixed(2), effectiveN);
+            : generateSimpleInterestSchedule(
+                +totalRepayable.toFixed(2),
+                effectiveN
+              );
 
-          // If a chosen end date was computed in the preview, keep it in sync in loanDetails
           const chosenHiddenEnd = getEl("new-loan-chosen-end-date");
           if (chosenHiddenEnd && chosenHiddenEnd.value) {
             newLoanData.loanDetails.loanEndDate = chosenHiddenEnd.value;
@@ -2749,7 +2837,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
           let currentDate = parseDateFlexible(firstDate);
           paymentSchedule.forEach((inst, index) => {
-              if (index > 0) {
+            if (index > 0) {
               if (freq === "daily") {
                 currentDate.setDate(currentDate.getDate() + 1);
               } else if (freq === "weekly") {
@@ -2825,7 +2913,10 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
-    getEl("collection-frequency").addEventListener("change", setAutomaticFirstDate);
+    getEl("collection-frequency").addEventListener(
+      "change",
+      setAutomaticFirstDate
+    );
     const givenEl = getEl("loan-given-date");
     if (givenEl) {
       givenEl.addEventListener("change", setAutomaticFirstDate);
@@ -2846,13 +2937,8 @@ document.addEventListener("DOMContentLoaded", () => {
       "first-collection-date",
       "loan-end-date",
     ];
-    // Helper to toggle 'required' on loan detail fields depending on mode
     function setLoanDetailFieldsRequired(required) {
-      const ids = [
-        ...loanDetailFields,
-        "loan-given-date",
-        "loan-mop", // --- NEW: Also toggle required for MoP ---
-      ];
+      const ids = [...loanDetailFields, "loan-given-date", "loan-mop"];
       ids.forEach((id) => {
         const el = getEl(id);
         if (!el) return;
@@ -2863,7 +2949,6 @@ document.addEventListener("DOMContentLoaded", () => {
     loanDetailFields.forEach((id) => {
       const element = getEl(id);
       if (element) {
-        // Support both typed and programmatic changes from datepicker
         element.addEventListener("input", updateInstallmentPreview);
         element.addEventListener("change", updateInstallmentPreview);
       }
@@ -2900,30 +2985,31 @@ document.addEventListener("DOMContentLoaded", () => {
         const file = fileInput.files[0];
 
         if (file) {
-          const MAX_FILE_SIZE = 1 * 1024 * 1024; 
+          const MAX_FILE_SIZE = 1 * 1024 * 1024;
           if (file.size > MAX_FILE_SIZE) {
             showSizeAlert();
-            fileInput.value = ""; 
+            fileInput.value = "";
             if (labelSpan) {
               labelSpan.textContent = "Choose a file...";
               if (label) label.title = "";
             }
-            return; 
+            return;
           }
         }
 
         const fileName = file ? file.name : "Choose a file...";
         if (labelSpan) {
-          // Estimate available characters based on available pixel width
           const labelWidth = label.clientWidth || 0;
           const iconWidth = (labelIcon && labelIcon.clientWidth) || 0;
-          const gap = 12; // approximate gap/padding
+          const gap = 12;
           const availablePx = Math.max(0, labelWidth - iconWidth - gap - 24);
-          const avgCharPx = 7; // rough average width of a character
+          const avgCharPx = 7;
           const maxChars = Math.max(12, Math.floor(availablePx / avgCharPx));
-          const displayName = file ? truncateMiddle(file.name, maxChars) : fileName;
+          const displayName = file
+            ? truncateMiddle(file.name, maxChars)
+            : fileName;
           labelSpan.textContent = displayName;
-          if (label) label.title = file ? file.name : ""; // show full name on hover
+          if (label) label.title = file ? file.name : "";
         }
       }
     });

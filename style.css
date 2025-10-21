@@ -2193,3 +2193,9 @@ input:checked + .slider:before {
   color: var(--text-gray);
   font-size: 1.1rem;
 }
+.profile-avatar-img {
+  width: 100%; 
+  height: 100%;
+  object-fit: cover; 
+  border-radius: 50%; 
+}

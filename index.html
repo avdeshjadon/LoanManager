@@ -69,9 +69,8 @@
         font-size: 1.1rem;
       }
 
-      /* --- NEW CSS --- */
       .modal-content.large {
-        max-width: 1000px; /* Increased width for new column */
+        max-width: 1000px;
       }
       .loan-mop-badge {
         background-color: var(--info, #007bff);
@@ -83,7 +82,6 @@
         margin-left: 8px;
         text-transform: capitalize;
       }
-      /* --- END NEW CSS --- */
     </style>
   </head>
   <body>
@@ -478,7 +476,7 @@
                   <input type="text" id="customer-ifsc" class="form-control" placeholder="e.g., SBIN0000001" />
                 </div>
               </div>
-              
+
               <div class="form-group" style="margin-top: 0.5rem">
                 <label for="loan-mop">Mode of Payment (Loan Given)</label>
                 <select id="loan-mop" class="form-control" required>
@@ -489,7 +487,8 @@
                   <option value="Online (Other)">Online (Other)</option>
                 </select>
               </div>
-              </fieldset>
+
+            </fieldset>
             <div id="loan-details-fields">
               <fieldset>
                 <legend>Loan Details (Simple Interest)</legend>
@@ -567,7 +566,7 @@
                     />
                   </div>
                 </div>
-                
+
                 <div
                   id="installment-preview"
                   class="installment-preview hidden"
@@ -665,6 +664,7 @@
                 <option value="Online (Other)">Online (Other)</option>
               </select>
             </div>
+
             <div class="payment-pending-display">
               <span class="payment-pending-label">Remaining Balance:</span>
               <strong class="payment-pending-value">₹0.00</strong>
