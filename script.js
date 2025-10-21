@@ -535,6 +535,7 @@ document.addEventListener("DOMContentLoaded", () => {
         pendingAmount: +installmentAmount.toFixed(2),
         status: "Due",
         paidDate: null,
+        modeOfPayment: null, // --- NEW ---
       });
     }
     return schedule;
@@ -561,6 +562,7 @@ document.addEventListener("DOMContentLoaded", () => {
         pendingAmount: amt,
         status: "Due",
         paidDate: null,
+        modeOfPayment: null, // --- NEW ---
       });
     }
     return schedule;
@@ -1192,6 +1194,15 @@ document.addEventListener("DOMContentLoaded", () => {
       frequencyBadge.className = `loan-frequency-badge frequency-${customer.loanDetails.frequency}`;
     }
 
+    // --- NEW: Set MoP Badge ---
+    const mopBadge = getEl("details-modal-loan-mop");
+    if (mopBadge && customer.loanDetails?.modeOfPayment) {
+      mopBadge.textContent = customer.loanDetails.modeOfPayment;
+    } else if (mopBadge) {
+      mopBadge.textContent = "N/A";
+    }
+    // --- END NEW ---
+
     getEl("generate-pdf-btn").dataset.id = customerId;
     getEl("send-whatsapp-btn").dataset.id = customerId;
 
@@ -1251,6 +1262,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const picButton = createKycViewButton(kycDocs.picUrl, "View Photo");
     const bankButton = createKycViewButton(kycDocs.bankDetailsUrl);
 
+    // --- UPDATED: Added MoP Header ---
     modalBody.innerHTML = `<div class="details-view-grid"><div class="customer-profile-panel"><div class="profile-header"><div class="profile-avatar">${customer.name
       .charAt(0)
       .toUpperCase()}</div><h3 class="profile-name">${
@@ -1308,7 +1320,7 @@ document.addEventListener("DOMContentLoaded", () => {
       schedule.length
     } Paid)</h4><div class="progress-bar"><div class="progress-bar-inner" style="width: ${progress}%;"></div></div></div><div class="loan-actions"><button class="btn btn-outline" id="edit-customer-info-btn" data-id="${
       customer.id
-    }"><i class="fas fa-edit"></i> Edit Info</button>${actionButtons}</div></div><div class="emi-schedule-panel"><div class="emi-table-container"><table class="emi-table"><thead><tr><th>#</th><th>Due Date</th><th>Amount Due</th><th>Amount Paid</th><th>Status</th><th class="no-pdf">Action</th></tr></thead><tbody id="emi-schedule-body-details"></tbody></table></div><div class="loan-summary-box"><h4>Loan Summary</h4><div class="calc-result-item"><span>Principal Amount</span><span>${formatCurrency(
+    }"><i class="fas fa-edit"></i> Edit Info</button>${actionButtons}</div></div><div class="emi-schedule-panel"><div class="emi-table-container"><table class="emi-table"><thead><tr><th>#</th><th>Due Date</th><th>Amount Due</th><th>Amount Paid</th><th>MoP</th><th>Status</th><th class="no-pdf">Action</th></tr></thead><tbody id="emi-schedule-body-details"></tbody></table></div><div class="loan-summary-box"><h4>Loan Summary</h4><div class="calc-result-item"><span>Principal Amount</span><span>${formatCurrency(
       details.principal
     )}</span></div><div class="calc-result-item"><span>Interest Rate (Monthly)</span><span>${
       (details.interestRate ?? 0) + "%"
@@ -1319,6 +1331,7 @@ document.addEventListener("DOMContentLoaded", () => {
     )}</span></div><div class="summary-stat-item"><span class="label">Amount Remaining</span><span class="value remaining">${formatCurrency(
       remainingToCollect
     )}</span></div></div></div></div>`;
+    // --- END UPDATED ---
 
     const emiTableBody = modalBody.querySelector("#emi-schedule-body-details");
     const today = new Date();
@@ -1351,11 +1364,19 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       // Use the dispDate helper function here
       const displayedDue = dispDate(inst.dueDate);
+
+      // --- NEW: Get MoP for display ---
+      const paymentMop = inst.amountPaid > 0 ? (inst.modeOfPayment || 'N/A') : '';
+      // --- END NEW ---
+
+      // --- UPDATED: Added MoP cell ---
       tr.innerHTML = `<td>${inst.installment}</td><td>${displayedDue}</td><td>${formatCurrency(
         inst.amountDue
       )}</td><td>${formatCurrency(
         inst.amountPaid
-      )}</td><td><span class="emi-status status-${statusClass}">${statusText}</span></td><td class="no-pdf">${actionButtons}</td>`;
+      )}</td><td>${paymentMop}</td><td><span class="emi-status status-${statusClass}">${statusText}</span></td><td class="no-pdf">${actionButtons}</td>`;
+      // --- END UPDATED ---
+
       emiTableBody.appendChild(tr);
     });
   };
@@ -1844,6 +1865,11 @@ document.addEventListener("DOMContentLoaded", () => {
           // Cap input to remaining amount only
           paymentAmountInput.setAttribute("max", computedPending);
 
+          // --- NEW: Set MoP dropdown ---
+          const paymentMopInput = getEl("payment-mop");
+          paymentMopInput.value = installment.modeOfPayment || ""; // Set to "" to select the disabled "Select Mode..."
+          // --- END NEW ---
+
           const updatePendingDisplay = () => {
             const payNow = parseFloat(paymentAmountInput.value) || 0;
             const pendingAmount = Math.max(0, computedPending - payNow);
@@ -2012,6 +2038,8 @@ document.addEventListener("DOMContentLoaded", () => {
           const lgd = getEl("loan-given-date");
           if (lgd) lgd.value = todayStr;
           setAutomaticFirstDate();
+          
+          getEl("loan-mop").value = "Cash"; // --- NEW: Default MoP
 
           getEl("personal-info-fields").style.display = "block";
           getEl("kyc-info-fields").style.display = "block";
@@ -2047,6 +2075,10 @@ document.addEventListener("DOMContentLoaded", () => {
           getEl("customer-bank-name").value = customer.bankName || "";
           getEl("customer-account-number").value = customer.accountNumber || "";
           getEl("customer-ifsc").value = customer.ifsc || "";
+          
+          // --- NEW: Populate MoP dropdown on Edit ---
+          getEl("loan-mop").value = customer.loanDetails?.modeOfPayment || "Cash";
+          // --- END NEW ---
 
           getEl("personal-info-fields").style.display = "block";
           getEl("kyc-info-fields").style.display = "block";
@@ -2170,6 +2202,8 @@ document.addEventListener("DOMContentLoaded", () => {
           else if (freq === "weekly") base.setDate(base.getDate() + 7);
           else if (freq === "monthly") base.setMonth(base.getMonth() + 1);
           getEl("new-loan-start-date").value = formatForInput({id:'any'}, base);
+          
+          getEl("new-loan-mop").value = "Cash"; // --- NEW: Default MoP
 
           // Also set a sensible default Loan End Date based on one more period (n = 2)
           try {
@@ -2392,6 +2426,10 @@ document.addEventListener("DOMContentLoaded", () => {
             if (bankDetailsUrl)
               finalUpdate["kycDocs.bankDetailsUrl"] = bankDetailsUrl;
 
+            // --- NEW: Save MoP on Edit ---
+            finalUpdate["loanDetails.modeOfPayment"] = getEl("loan-mop").value;
+            // --- END NEW ---
+
             await db.collection("customers").doc(id).update(finalUpdate);
             reopenAfterSaveId = id;
             showToast(
@@ -2467,6 +2505,7 @@ document.addEventListener("DOMContentLoaded", () => {
               // Keep original endDate here so interest stays constant across the app
               loanEndDate: endDate,
               type: "simple_interest",
+              modeOfPayment: getEl("loan-mop").value, // --- NEW: Save MoP ---
             };
 
             let paymentSchedule = schedule
@@ -2529,6 +2568,13 @@ document.addEventListener("DOMContentLoaded", () => {
             10
           );
           const amountPaidNow = parseFloat(getEl("payment-amount").value) || 0;
+          
+          // --- NEW: Get MoP ---
+          const mop = getEl("payment-mop").value;
+          if (!mop) {
+            throw new Error("Please select a mode of payment.");
+          }
+          // --- END NEW ---
 
           const customer = window.allCustomers.active.find(
             (c) => c.id === customerId
@@ -2549,6 +2595,7 @@ document.addEventListener("DOMContentLoaded", () => {
           installment.amountPaid = newTotalPaid;
           installment.pendingAmount = pending;
           installment.paidDate = new Date().toISOString();
+          installment.modeOfPayment = mop; // --- NEW: Save MoP ---
 
           if (pending <= 0.001) {
             installment.status = "Paid";
@@ -2558,6 +2605,7 @@ document.addEventListener("DOMContentLoaded", () => {
           } else {
             installment.status = "Due";
             installment.paidDate = null;
+            installment.modeOfPayment = null; // --- NEW: Clear MoP if payment is 0 ---
           }
 
           await db
@@ -2682,6 +2730,7 @@ document.addEventListener("DOMContentLoaded", () => {
               // Keep original endDate to preserve interest total
               loanEndDate: endDate,
               type: "simple_interest",
+              modeOfPayment: getEl("new-loan-mop").value, // --- NEW: Save MoP ---
             },
           };
 
@@ -2802,6 +2851,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const ids = [
         ...loanDetailFields,
         "loan-given-date",
+        "loan-mop", // --- NEW: Also toggle required for MoP ---
       ];
       ids.forEach((id) => {
         const el = getEl(id);

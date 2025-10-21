@@ -68,6 +68,22 @@
         color: #555;
         font-size: 1.1rem;
       }
+
+      /* --- NEW CSS --- */
+      .modal-content.large {
+        max-width: 1000px; /* Increased width for new column */
+      }
+      .loan-mop-badge {
+        background-color: var(--info, #007bff);
+        color: #fff;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        margin-left: 8px;
+        text-transform: capitalize;
+      }
+      /* --- END NEW CSS --- */
     </style>
   </head>
   <body>
@@ -132,7 +148,6 @@
       </div>
     </div>
 
-    <!-- Datepicker overlay -->
     <div class="datepicker-overlay" id="datepicker-overlay" aria-hidden="true">
       <div class="datepicker" role="dialog" aria-modal="true">
         <div class="datepicker-header">
@@ -248,6 +263,10 @@
             <span
               class="loan-frequency-badge"
               id="details-modal-frequency"
+            ></span>
+            <span
+              class="loan-mop-badge"
+              id="details-modal-loan-mop"
             ></span>
             <div
               id="loan-switcher-container"
@@ -445,7 +464,6 @@
                 </div>
               </div>
 
-              <!-- NEW: Bank details fields -->
               <div class="form-row" style="gap:1rem; margin-top:0.75rem;">
                 <div class="form-group" style="flex:1;">
                   <label for="customer-bank-name">Bank Name</label>
@@ -460,8 +478,18 @@
                   <input type="text" id="customer-ifsc" class="form-control" placeholder="e.g., SBIN0000001" />
                 </div>
               </div>
-              <!-- Father and Address kept in Personal Information for Add/Edit form that -->
-            </fieldset>
+              
+              <div class="form-group" style="margin-top: 0.5rem">
+                <label for="loan-mop">Mode of Payment (Loan Given)</label>
+                <select id="loan-mop" class="form-control" required>
+                  <option value="Cash">Cash</option>
+                  <option value="Online (Paytm)">Online (Paytm)</option>
+                  <option value="Online (GPay)">Online (GPay)</option>
+                  <option value="Online (PhonePe)">Online (PhonePe)</option>
+                  <option value="Online (Other)">Online (Other)</option>
+                </select>
+              </div>
+              </fieldset>
             <div id="loan-details-fields">
               <fieldset>
                 <legend>Loan Details (Simple Interest)</legend>
@@ -539,6 +567,7 @@
                     />
                   </div>
                 </div>
+                
                 <div
                   id="installment-preview"
                   class="installment-preview hidden"
@@ -625,6 +654,17 @@
               </button>
             </div>
 
+            <div class="form-group" style="margin-top: 1.5rem">
+              <label for="payment-mop">Mode of Payment</label>
+              <select id="payment-mop" class="form-control" required>
+                <option value="" disabled selected>Select Mode...</option>
+                <option value="Cash">Cash</option>
+                <option value="Online (Paytm)">Online (Paytm)</option>
+                <option value="Online (GPay)">Online (GPay)</option>
+                <option value="Online (PhonePe)">Online (PhonePe)</option>
+                <option value="Online (Other)">Online (Other)</option>
+              </select>
+            </div>
             <div class="payment-pending-display">
               <span class="payment-pending-label">Remaining Balance:</span>
               <strong class="payment-pending-value">₹0.00</strong>
@@ -725,6 +765,16 @@
                 />
               </div>
             </div>
+            <div class="form-group" style="margin-top: 0.5rem">
+              <label for="new-loan-mop">Mode of Payment (Loan Given)</label>
+              <select id="new-loan-mop" class="form-control" required>
+                <option value="Cash">Cash</option>
+                <option value="Online (Paytm)">Online (Paytm)</option>
+                <option value="Online (GPay)">Online (GPay)</option>
+                <option value="Online (PhonePe)">Online (PhonePe)</option>
+                <option value="Online (Other)">Online (Other)</option>
+              </select>
+            </div>
             <div
               id="new-loan-installment-preview"
               class="installment-preview hidden"
@@ -776,7 +826,6 @@
       </div>
     </div>
 
-    <!-- Reset Password Modal -->
     <div class="modal" id="reset-password-modal">
       <div class="modal-content">
         <div class="modal-header">
