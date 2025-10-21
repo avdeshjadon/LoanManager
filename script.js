@@ -870,6 +870,63 @@ document.addEventListener("DOMContentLoaded", () => {
     container.innerHTML = `<ul class="activity-list">${activityHTML}</ul>`;
   };
 
+  // Helper to format any stored date (dd-mm-yyyy or yyyy-mm-dd) into dd-mm-yyyy for display
+  const formatForDisplay = (val) => {
+    if (!val) return "N/A";
+    try {
+      const d = parseDateFlexible(val); // Uses the global helper
+      if (!d || isNaN(+d)) return "N/A";
+      return formatForInput({ id: "any" }, d); // Re-uses the existing datepicker formatter
+    } catch (_) {
+      return "N/A";
+    }
+  };
+
+  const populateTodaysCollection = () => {
+    // Find the container, be safe if it doesn't exist yet
+    const container = getEl("todays-collection-container");
+    if (!container) return; // No-op as requested
+
+    let todaysEmis = [];
+    const today = new Date();
+    const todayStr = today.toISOString().split("T")[0]; // yyyy-mm-dd for comparison
+
+    window.allCustomers.active
+      .filter((c) => c.loanDetails && c.paymentSchedule)
+      .forEach((customer) => {
+        customer.paymentSchedule.forEach((inst) => {
+          // Find installments that are Due or Pending
+          if (
+            (inst.status === "Due" || inst.status === "Pending") &&
+            inst.dueDate === todayStr // Check if due date is today
+          ) {
+            todaysEmis.push({
+              name: `${customer.name} (F${customer.financeCount || 1})`,
+              amount: inst.pendingAmount,
+              date: inst.dueDate,
+              customerId: customer.id,
+            });
+          }
+        });
+      });
+
+    todaysEmis.sort((a, b) => a.name.localeCompare(b.name));
+
+    // Render the list
+    if (todaysEmis.length === 0) {
+      container.innerHTML = `<ul class="activity-list"><li class="activity-item" style="cursor:default; justify-content:center;">No collections due today.</li></ul>`;
+      return;
+    }
+
+    container.innerHTML = `<ul class="activity-list">${todaysEmis
+      .map((item) => {
+        // Use the new helper
+        const formattedDate = formatForDisplay(item.date);
+        return `<li class="activity-item" data-id="${item.customerId}"><div class="activity-info"><span class="activity-name">${item.name}</span><span classs="activity-date">${formattedDate}</span></div><div class="activity-value"><span class="activity-amount">${formatCurrency(item.amount)}</span></div></li>`;
+      })
+      .join("")}</ul>`;
+  };
+
   const populatePageContent = (stats) => {
     getEl(
       "dashboard-section"
@@ -1278,8 +1335,11 @@ document.addEventListener("DOMContentLoaded", () => {
       if (customer.status === "active" && inst.amountPaid > 0) {
         actionButtons += `<button class="btn btn-outline btn-sm record-payment-btn" data-installment="${inst.installment}" data-id="${customer.id}">Edit</button>`;
       }
-      const displayedDue = formatForDisplay(inst.dueDate);
-      tr.innerHTML = `<td>${inst.installment}</td><td>${displayedDue}</td><td>${formatCurrency(inst.amountDue)}</td><td>${formatCurrency(
+      // Use the dispDate helper function here
+      const displayedDue = dispDate(inst.dueDate);
+      tr.innerHTML = `<td>${inst.installment}</td><td>${displayedDue}</td><td>${formatCurrency(
+        inst.amountDue
+      )}</td><td>${formatCurrency(
         inst.amountPaid
       )}</td><td><span class="emi-status status-${statusClass}">${statusText}</span></td><td class="no-pdf">${actionButtons}</td>`;
       emiTableBody.appendChild(tr);
