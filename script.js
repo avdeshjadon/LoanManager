@@ -1286,7 +1286,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const picButton = createKycViewButton(kycDocs.picUrl, "View Photo");
     const bankButton = createKycViewButton(kycDocs.bankDetailsUrl);
 
-    // --- AVATAR LOGIC ---
     let avatarHtml;
     if (kycDocs.picUrl) {
       avatarHtml = `<img src="${kycDocs.picUrl}" alt="${customer.name.charAt(
@@ -1295,10 +1294,9 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       avatarHtml = customer.name.charAt(0).toUpperCase();
     }
-    // --- END AVATAR LOGIC ---
 
     modalBody.innerHTML = `<div class="details-view-grid"><div class="customer-profile-panel"><div class="profile-header">
-    
+
     <div class="profile-avatar">${avatarHtml}</div>
 
     <h3 class="profile-name">${customer.name}</h3><p class="profile-contact">${
@@ -2511,6 +2509,12 @@ document.addEventListener("DOMContentLoaded", () => {
               "Customer Updated",
               "Details saved successfully."
             );
+            // Wait for refresh before showing details after update
+            getEl("customer-form-modal").classList.remove("show");
+            await loadAndRenderAll();
+            if (reopenAfterSaveId) {
+              showCustomerDetails(reopenAfterSaveId);
+            }
           } else {
             const customerName = getEl("customer-name").value.trim();
             const existingCustomer = [
@@ -2601,7 +2605,10 @@ document.addEventListener("DOMContentLoaded", () => {
                   currentDate = addMonthsPreserveAnchor(base, index);
                 }
               }
-              inst.dueDate = new Date(currentDate).toISOString().split("T")[0];
+              const yyyy = currentDate.getFullYear();
+              const mm = String(currentDate.getMonth() + 1).padStart(2, "0");
+              const dd = String(currentDate.getDate()).padStart(2, "0");
+              inst.dueDate = `${yyyy}-${mm}-${dd}`;
             });
 
             customerData.paymentSchedule = paymentSchedule;
@@ -2621,11 +2628,13 @@ document.addEventListener("DOMContentLoaded", () => {
               financeCount: customerData.financeCount,
             });
             showToast("success", "Customer Added", "New loan account created.");
-          }
-          getEl("customer-form-modal").classList.remove("show");
-          await loadAndRenderAll();
-          if (reopenAfterSaveId) {
-            showCustomerDetails(reopenAfterSaveId);
+
+            // ** FIX IS HERE: Wait for data reload BEFORE showing details **
+            getEl("customer-form-modal").classList.remove("show");
+            await loadAndRenderAll(); // Wait for the refresh to complete
+            if (reopenAfterSaveId) {
+              showCustomerDetails(reopenAfterSaveId); // Now uses updated data
+            }
           }
         } catch (error) {
           console.error("Save/Update failed:", error);
@@ -2847,7 +2856,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 currentDate = addMonthsPreserveAnchor(base, index);
               }
             }
-            inst.dueDate = new Date(currentDate).toISOString().split("T")[0];
+            const yyyy = currentDate.getFullYear();
+            const mm = String(currentDate.getMonth() + 1).padStart(2, "0");
+            const dd = String(currentDate.getDate()).padStart(2, "0");
+            inst.dueDate = `${yyyy}-${mm}-${dd}`;
           });
           newLoanData.paymentSchedule = paymentSchedule;
 
@@ -2865,7 +2877,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
           getEl("new-loan-modal").classList.remove("show");
           getEl("customer-details-modal").classList.remove("show");
-          await loadAndRenderAll();
+          await loadAndRenderAll(); // Wait before showing details
+          // Find the newly added doc ID to show details (might need adjustment if multiple added quickly)
+          const snapshot = await db
+            .collection("customers")
+            .where("owner", "==", currentUser.uid)
+            .where("name", "==", newLoanData.name)
+            .where("financeCount", "==", newLoanData.financeCount)
+            .limit(1)
+            .get();
+          if (!snapshot.empty) {
+            showCustomerDetails(snapshot.docs[0].id);
+          }
         } catch (error) {
           showToast("error", "Failed", error.message);
         } finally {

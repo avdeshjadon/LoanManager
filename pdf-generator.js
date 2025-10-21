@@ -39,7 +39,7 @@ async function generateAndDownloadPDF(customerId) {
 
   const totalPaid = paymentSchedule.reduce((sum, p) => sum + p.amountPaid, 0);
 
-  // CORRECTED: Replaced the non-existent function with the correct one from script.js
+  // Use the correct interest calculation function
   const totalInterestPayable = calculateTotalInterest(
     loanDetails.principal,
     loanDetails.interestRate,
@@ -101,7 +101,8 @@ async function generateAndDownloadPDF(customerId) {
 
   const rowHeight = 18;
   const headerHeight = 40;
-  const leftContentHeight = headerHeight + 7 * rowHeight;
+  // --- UPDATED: Increased row count for left box ---
+  const leftContentHeight = headerHeight + 12 * rowHeight; // 7 original + 5 new rows
   const rightContentHeight = headerHeight + 3 * rowHeight;
   const boxHeight = Math.max(leftContentHeight, rightContentHeight) + 15;
 
@@ -127,7 +128,7 @@ async function generateAndDownloadPDF(customerId) {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
     doc.setTextColor(headingColor);
-    doc.text(value, startX + boxWidth - 15, startY, { align: "right" });
+    doc.text(value || "N/A", startX + boxWidth - 15, startY, { align: "right" }); // Added fallback for value
     return startY + rowHeight;
   };
 
@@ -164,7 +165,7 @@ async function generateAndDownloadPDF(customerId) {
   );
   leftY = drawDetailRow(
     "Tenure:",
-    `${paymentSchedule.length} ${loanDetails.frequency} installments`, // Changed from loanDetails.installments
+    `${paymentSchedule.length} ${loanDetails.frequency} installments`,
     leftBoxX,
     leftY
   );
@@ -174,6 +175,18 @@ async function generateAndDownloadPDF(customerId) {
     leftBoxX,
     leftY
   );
+  // --- NEW DETAILS ADDED ---
+  doc.setLineWidth(0.5);
+  doc.setDrawColor(borderColor);
+  doc.line(leftBoxX + 10, leftY - (rowHeight/2), leftBoxX + boxWidth - 10, leftY - (rowHeight/2)); // Separator line
+
+  leftY = drawDetailRow("Aadhar Number:", customer.aadharNumber, leftBoxX, leftY);
+  leftY = drawDetailRow("PAN Number:", customer.panNumber, leftBoxX, leftY);
+  leftY = drawDetailRow("Bank Name:", customer.bankName, leftBoxX, leftY);
+  leftY = drawDetailRow("Account Number:", customer.accountNumber, leftBoxX, leftY);
+  leftY = drawDetailRow("IFSC Code:", customer.ifsc, leftBoxX, leftY);
+  // --- END NEW DETAILS ---
+
 
   rightY += 25;
   doc.setFont("helvetica", "bold");
@@ -266,6 +279,7 @@ async function generateAndDownloadPDF(customerId) {
         }
       }
     },
+    margin: { left: 40, right: 40 } // Added margin to ensure table fits
   });
 
   // --- Footer ---
