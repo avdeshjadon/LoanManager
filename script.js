@@ -860,6 +860,12 @@ document.addEventListener("DOMContentLoaded", () => {
             icon = "fa-flag-checkered text-primary";
             text = `Loan settled for ${customerName}`;
             break;
+          // --- NEW CASE ---
+          case "LOAN_RESTORED":
+            icon = "fa-undo-alt text-warning";
+            text = `Loan restored for ${customerName}`;
+            break;
+          // --- END NEW CASE ---
         }
         const timestamp = act.timestamp
           ? new Date(act.timestamp.seconds * 1000).toLocaleString()
@@ -986,9 +992,12 @@ document.addEventListener("DOMContentLoaded", () => {
         interestEarned
       )}</span>`;
 
+      // --- NEW BUTTON ---
+      const restoreButton = `<button class="btn btn-success btn-sm restore-customer-btn" data-id="${c.id}" title="Restore Loan"><i class="fas fa-undo-alt"></i></button>`;
+      // --- END NEW BUTTON ---
       const deleteButton = `<button class="btn btn-danger btn-sm delete-customer-btn" data-id="${c.id}" title="Delete Customer"><i class="fas fa-trash-alt"></i></button>`;
 
-      li.innerHTML = `<div class="customer-info" data-id="${c.id}">${nameHtml}<div class="customer-details">${detailsHtml}</div></div><div class="customer-actions">${deleteButton}<span class="view-details-prompt" data-id="${c.id}">View Details</span></div>`;
+      li.innerHTML = `<div class="customer-info" data-id="${c.id}">${nameHtml}<div class="customer-details">${detailsHtml}</div></div><div class="customer-actions">${restoreButton}${deleteButton}<span class="view-details-prompt" data-id="${c.id}">View Details</span></div>`;
       element.appendChild(li);
     });
   };
@@ -1386,6 +1395,52 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast("error", "Settle Failed", error.message);
     }
   }
+
+  // --- NEW FUNCTION ---
+  async function restoreLoanById(loanId) {
+    // Find the customer in the settled list
+    const customerToRestore = window.allCustomers.settled.find(
+      (c) => c.id === loanId
+    );
+    if (!customerToRestore) {
+      showToast("error", "Not Found", "The selected loan could not be found.");
+      return;
+    }
+    try {
+      // Set status back to 'active'
+      await db
+        .collection("customers")
+        .doc(loanId)
+        .update({ status: "active" });
+
+      // Log the restoration activity
+      await logActivity("LOAN_RESTORED", {
+        customerName: customerToRestore.name,
+        financeCount: customerToRestore.financeCount || 1,
+      });
+
+      // CRITICAL: Renumber all active loans for this customer
+      try {
+        await renumberActiveLoansByCustomerName(customerToRestore.name);
+      } catch (e) {
+        console.warn("Renumbering after restore failed:", e);
+      }
+
+      showToast(
+        "success",
+        "Loan Restored",
+        `Finance ${
+          customerToRestore.financeCount || 1
+        } moved back to active.`
+      );
+
+      // Reload all data to refresh lists
+      await loadAndRenderAll();
+    } catch (error) {
+      showToast("error", "Restore Failed", error.message);
+    }
+  }
+  // --- END NEW FUNCTION ---
 
   auth.onAuthStateChanged(async (user) => {
     currentUser = user;
@@ -1831,6 +1886,21 @@ document.addEventListener("DOMContentLoaded", () => {
               }
             }
           );
+        // --- NEW EVENT LISTENER ---
+        } else if (button.classList.contains("restore-customer-btn")) {
+          const customerId = button.dataset.id;
+          const customer = window.allCustomers.settled.find(c => c.id === customerId);
+          const customerName = customer ? customer.name : "this loan";
+          const financeCount = customer ? (customer.financeCount || 1) : "";
+          
+          showConfirmation(
+            "Restore Loan?",
+            `This will move Finance ${financeCount} for ${customerName} from 'Settled' back to 'Active'. Are you sure?`,
+            async () => {
+              await restoreLoanById(customerId);
+            }
+          );
+        // --- END NEW EVENT LISTENER ---
         } else if (button.classList.contains("delete-customer-btn")) {
           const customerId = button.dataset.id;
           showConfirmation(
