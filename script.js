@@ -1049,69 +1049,14 @@ document.addEventListener("DOMContentLoaded", () => {
         return `<ul class="activity-list"><li class="activity-item" style="cursor:default; justify-content:center;">No items found.</li></ul>`;
       return `<ul class="activity-list">${items
         .slice(0, 5)
-        .map(
-          (item) =>
-            `<li class="activity-item" data-id="${
-              item.customerId
-            }"><div class="activity-info"><span class="activity-name">${
-              item.name
-            }</span><span class="activity-date">${
-              item.date
-            }</span></div><div class="activity-value"><span class="activity-amount">${formatCurrency(
-              item.amount
-            )}</span></div></li>`
-        )
+        .map((item) => {
+          const formattedDate = formatForDisplay(item.date);
+          return `<li class="activity-item" data-id="${item.customerId}"><div class="activity-info"><span class="activity-name">${item.name}</span><span class="activity-date">${formattedDate}</span></div><div class="activity-value"><span class="activity-amount">${formatCurrency(item.amount)}</span></div></li>`;
+        })
         .join("")}</ul>`;
     };
     upcomingContainer.innerHTML = renderEmiList(upcoming);
     overdueContainer.innerHTML = renderEmiList(overdue);
-  };
-
-  const populateTodaysCollection = () => {
-    const container = getEl("todays-collection-section");
-    if (!container) return;
-    const today = new Date().toISOString().split("T")[0];
-    const dueToday = window.allCustomers.active
-      .map((cust) => {
-        const dueInstallment = cust.paymentSchedule?.find(
-          (inst) =>
-            inst.dueDate === today &&
-            (inst.status === "Due" || inst.status === "Pending")
-        );
-        return dueInstallment ? { ...cust, dueInstallment } : null;
-      })
-      .filter(Boolean);
-
-    const totalDue = dueToday.reduce(
-      (sum, item) => sum + item.dueInstallment.pendingAmount,
-      0
-    );
-    let listHtml = "";
-    if (dueToday.length > 0) {
-      listHtml = dueToday
-        .map(
-          (item) =>
-            `<li class="activity-item" data-id="${
-              item.id
-            }"><div class="activity-info"><span class="activity-name">${
-              item.name
-            } (F${
-              item.financeCount || 1
-            })</span><span class="activity-details">Installment #${
-              item.dueInstallment.installment
-            }</span></div><div class="activity-value"><span class="activity-amount">${formatCurrency(
-              item.dueInstallment.pendingAmount
-            )}</span></div></li>`
-        )
-        .join("");
-    } else {
-      listHtml = `<li class="activity-item" style="cursor:default; justify-content:center;">No collections due today.</li>`;
-    }
-    container.innerHTML = `<div class="form-card"><div class="card-header"><h3>Due Today (${
-      dueToday.length
-    })</h3><div class="stat-card" style="padding: 0.5rem 1rem; text-align: right;"><div class="stat-title">Total Due Today</div><div class="stat-value" style="font-size: 1.5rem;">${formatCurrency(
-      totalDue
-    )}</div></div></div><ul class="activity-list">${listHtml}</ul></div>`;
   };
 
   const showCustomerDetails = (customerId) => {
@@ -1214,6 +1159,11 @@ document.addEventListener("DOMContentLoaded", () => {
       (p) => p.status === "Due" || p.status === "Pending"
     );
 
+    // Bank fields for display
+    const bankNameDisplay = customer.bankName || "N/A";
+    const accountNumberDisplay = customer.accountNumber || "N/A";
+    const ifscDisplay = customer.ifsc || "N/A";
+
     let actionButtons = "";
     if (customer.status === "active") {
       actionButtons += `<button class="btn btn-primary" id="add-new-loan-btn" data-id="${customer.id}"><i class="fas fa-plus-circle"></i> Add New Loan</button>`;
@@ -1274,6 +1224,9 @@ document.addEventListener("DOMContentLoaded", () => {
       })()}
     </div>
     <div class="profile-section"><h4>KYC Documents</h4><div class="profile-stat"><span class="label">Aadhar Card</span>${aadharButton}</div><div class="profile-stat"><span class="label">PAN Card</span>${panButton}</div><div class="profile-stat"><span class="label">Client Photo</span>${picButton}</div><div class="profile-stat"><span class="label">Bank Details</span>${bankButton}</div>
+    <div class="profile-stat"><span class="label">Bank Name</span><span class="value">${bankNameDisplay}</span></div>
+    <div class="profile-stat"><span class="label">Account Number</span><span class="value">${accountNumberDisplay}</span></div>
+    <div class="profile-stat"><span class="label">IFSC</span><span class="value">${ifscDisplay}</span></div>
     <div class="profile-stat"><span class="label">Father's Name</span><span class="value">${
       customer.fatherName || "N/A"
     }</span></div>
@@ -1325,9 +1278,8 @@ document.addEventListener("DOMContentLoaded", () => {
       if (customer.status === "active" && inst.amountPaid > 0) {
         actionButtons += `<button class="btn btn-outline btn-sm record-payment-btn" data-installment="${inst.installment}" data-id="${customer.id}">Edit</button>`;
       }
-      tr.innerHTML = `<td>${inst.installment}</td><td>${
-        inst.dueDate
-      }</td><td>${formatCurrency(inst.amountDue)}</td><td>${formatCurrency(
+      const displayedDue = formatForDisplay(inst.dueDate);
+      tr.innerHTML = `<td>${inst.installment}</td><td>${displayedDue}</td><td>${formatCurrency(inst.amountDue)}</td><td>${formatCurrency(
         inst.amountPaid
       )}</td><td><span class="emi-status status-${statusClass}">${statusText}</span></td><td class="no-pdf">${actionButtons}</td>`;
       emiTableBody.appendChild(tr);
@@ -1351,6 +1303,12 @@ document.addEventListener("DOMContentLoaded", () => {
         customerName: customerToSettle.name,
         financeCount: customerToSettle.financeCount || 1,
       });
+      // Renumber remaining active loans for this customer name after settling one
+      try {
+        await renumberActiveLoansByCustomerName(customerToSettle.name);
+      } catch (e) {
+        console.warn("Renumbering after settle failed:", e);
+      }
       showToast(
         "success",
         "Loan Settled",
@@ -1545,7 +1503,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         if (chosen < minInstallment) {
           inputEl.classList.add("invalid");
-          summaryEl.innerHTML = `<span style=\"color:var(--danger)\">Amount is below minimum ${formatCurrency(minInstallment)}</span>`;
+          summaryEl.innerHTML = `<span style="color:var(--danger)"><strong>Amount is below minimum ${formatCurrency(minInstallment)}</strong></span>`;
           return;
         }
         inputEl.classList.remove("invalid");
@@ -1816,6 +1774,16 @@ document.addEventListener("DOMContentLoaded", () => {
             async () => {
               try {
                 await deleteSingleCustomerCascade(customerId);
+                // Renumber remaining active loans for this customer name
+                const res = await deleteSingleCustomerCascade(customerId);
+                // Renumber remaining active loans for this customer name
+                if (res && res.name) {
+                  try {
+                    await renumberActiveLoansByCustomerName(res.name);
+                  } catch (e) {
+                    console.warn("Renumbering after delete failed:", e);
+                  }
+                }
                 showToast(
                   "success",
                   "Customer Deleted",
@@ -1941,6 +1909,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
           getEl("customer-aadhar-number").value = customer.aadharNumber || "";
           getEl("customer-pan-number").value = customer.panNumber || "";
+          getEl("customer-bank-name").value = customer.bankName || "";
+          getEl("customer-account-number").value = customer.accountNumber || "";
+          getEl("customer-ifsc").value = customer.ifsc || "";
 
           getEl("personal-info-fields").style.display = "block";
           getEl("kyc-info-fields").style.display = "block";
@@ -2226,6 +2197,10 @@ document.addEventListener("DOMContentLoaded", () => {
             whatsapp: getEl("customer-whatsapp").value,
             aadharNumber: getEl("customer-aadhar-number").value.trim(),
             panNumber: getEl("customer-pan-number").value.trim().toUpperCase(),
+            // NEW bank fields
+            bankName: getEl("customer-bank-name")?.value || "",
+            accountNumber: getEl("customer-account-number")?.value || "",
+            ifsc: getEl("customer-ifsc")?.value || "",
           };
 
           const uploadFile = async (fileInputId, fileType) => {
@@ -2272,6 +2247,9 @@ document.addEventListener("DOMContentLoaded", () => {
               panNumber: getEl("customer-pan-number")
                 .value.trim()
                 .toUpperCase(),
+              bankName: getEl("customer-bank-name")?.value || "",
+              accountNumber: getEl("customer-account-number")?.value || "",
+              ifsc: getEl("customer-ifsc")?.value || "",
             };
             if (aadharUrl) finalUpdate["kycDocs.aadharUrl"] = aadharUrl;
             if (panUrl) finalUpdate["kycDocs.panUrl"] = panUrl;
@@ -2384,12 +2362,14 @@ document.addEventListener("DOMContentLoaded", () => {
             customerData.status = "active";
             customerData.financeCount = 1;
 
+            // Persist bank fields on creation too (already in customerData)
             toggleButtonLoading(saveBtn, true, "Saving Customer...");
             const docRef = await db.collection("customers").add(customerData);
             reopenAfterSaveId = docRef.id;
             await logActivity("NEW_LOAN", {
               customerName: customerData.name,
               amount: p,
+              financeCount: customerData.financeCount,
             });
             showToast("success", "Customer Added", "New loan account created.");
           }
@@ -2549,6 +2529,10 @@ document.addEventListener("DOMContentLoaded", () => {
             address: baseCustomer.address,
             whatsapp: baseCustomer.whatsapp,
             kycDocs: baseCustomer.kycDocs || {},
+            // carry over bank details to the new loan record
+            bankName: baseCustomer.bankName || "",
+            accountNumber: baseCustomer.accountNumber || "",
+            ifsc: baseCustomer.ifsc || "",
             owner: currentUser.uid,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             status: "active",
