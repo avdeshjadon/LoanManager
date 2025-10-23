@@ -82,6 +82,42 @@
         margin-left: 8px;
         text-transform: capitalize;
       }
+
+      /* NEW: Today's total summary styles */
+      .today-total-box {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: linear-gradient(
+          90deg,
+          rgba(255, 249, 230, 1) 0%,
+          rgba(255, 243, 230, 1) 100%
+        );
+        border: 1px solid rgba(255, 200, 100, 0.25);
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        gap: 12px;
+      }
+      .today-total-left {
+        display: flex;
+        flex-direction: column;
+      }
+      .today-total-label {
+        font-weight: 700;
+        color: var(--text-primary, #1a202c);
+        font-size: 0.98rem;
+      }
+      .today-total-sub {
+        font-size: 0.85rem;
+        color: var(--text-muted, #555);
+        margin-top: 4px;
+      }
+      .today-total-amount {
+        font-weight: 800;
+        font-size: 1.1rem;
+        color: var(--success, #0f5132);
+      }
     </style>
   </head>
   <body>

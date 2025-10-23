@@ -928,7 +928,7 @@ document.addEventListener("DOMContentLoaded", () => {
           ) {
             todaysEmis.push({
               name: `${customer.name} (F${customer.financeCount || 1})`,
-              amount: inst.pendingAmount,
+              amount: inst.pendingAmount || inst.amountDue || 0,
               date: inst.dueDate,
               customerId: customer.id,
             });
@@ -938,23 +938,45 @@ document.addEventListener("DOMContentLoaded", () => {
 
     todaysEmis.sort((a, b) => a.name.localeCompare(b.name));
 
+    // Calculate total amount due for today and count
+    const totalDueToday = todaysEmis.reduce(
+      (sum, it) => sum + (Number(it.amount) || 0),
+      0
+    );
+    const totalCount = todaysEmis.length;
+
+    // Build total summary box HTML
+    const totalBoxHtml = `
+      <div class="today-total-box" role="region" aria-label="Today's total collection">
+        <div class="today-total-left">
+          <div class="today-total-label">Today's Total Collection</div>
+          <div class="today-total-sub">Collections: ${totalCount}</div>
+        </div>
+        <div class="today-total-amount">${formatCurrency(totalDueToday)}</div>
+      </div>
+    `;
+
     if (todaysEmis.length === 0) {
-      container.innerHTML = `<ul class="activity-list"><li class="activity-item" style="cursor:default; justify-content:center;">No collections due today.</li></ul>`;
+      container.innerHTML = `
+        ${totalBoxHtml}
+        <ul class="activity-list">
+          <li class="activity-item" style="cursor:default; justify-content:center;">No collections due today.</li>
+        </ul>`;
       return;
     }
 
-    container.innerHTML = `<ul class="activity-list">${todaysEmis
-      .map((item) => {
-        const formattedDate = formatForDisplay(item.date);
-        return `<li class="activity-item" data-id="${
-          item.customerId
-        }"><div class="activity-info"><span class="activity-name">${
-          item.name
-        }</span><span classs="activity-date">${formattedDate}</span></div><div class="activity-value"><span class="activity-amount">${formatCurrency(
-          item.amount
-        )}</span></div></li>`;
-      })
-      .join("")}</ul>`;
+    container.innerHTML = `
+      ${totalBoxHtml}
+      <ul class="activity-list">
+        ${todaysEmis
+          .map((item) => {
+            const formattedDate = formatForDisplay(item.date);
+            return `<li class="activity-item" data-id="${item.customerId}"><div class="activity-info"><span class="activity-name">${item.name}</span><span class="activity-date">${formattedDate}</span></div><div class="activity-value"><span class="activity-amount">${formatCurrency(
+              item.amount
+            )}</span></div></li>`;
+          })
+          .join("")}
+      </ul>`;
   };
 
   const populatePageContent = (stats) => {
@@ -1426,6 +1448,15 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   };
 
+  // Add this helper function after renderLoanDetails or in another appropriate location
+  const canEditLoanDetailsForCustomer = (customer) => {
+    if (!customer || !customer.paymentSchedule) return true;
+    // Check if any installment has been paid (amountPaid > 0)
+    return !customer.paymentSchedule.some(
+      (installment) => parseFloat(installment.amountPaid || 0) > 0
+    );
+  };
+
   async function settleLoanById(loanId) {
     const customerToSettle = window.allCustomers.active.find(
       (c) => c.id === loanId
@@ -1435,10 +1466,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     try {
-      await db
-        .collection("customers")
-        .doc(loanId)
-        .update({ status: "settled" });
+      await db.collection("customers").doc(loanId).update({ status: "settled" });
       await logActivity("LOAN_SETTLED", {
         customerName: customerToSettle.name,
         financeCount: customerToSettle.financeCount || 1,
@@ -2116,8 +2144,11 @@ document.addEventListener("DOMContentLoaded", () => {
             ...window.allCustomers.settled,
           ].find((c) => c.id === button.dataset.id);
           if (!customer) return;
+
           getEl("customer-form").reset();
           getEl("customer-id").value = customer.id;
+
+          // Personal fields
           getEl("customer-name").value = customer.name;
           getEl("customer-phone").value = customer.phone || "";
           getEl("customer-dob").value = customer.dob || "";
@@ -2126,21 +2157,49 @@ document.addEventListener("DOMContentLoaded", () => {
           getEl("customer-address").value = customer.address || "";
 
           getEl("customer-aadhar-number").value = customer.aadharNumber || "";
-          getEl("customer-pan-number").value = customer.panNumber || "";
+          getEl("customer-pan-number").value = (customer.panNumber || "").toUpperCase();
           getEl("customer-bank-name").value = customer.bankName || "";
           getEl("customer-account-number").value = customer.accountNumber || "";
           getEl("customer-ifsc").value = customer.ifsc || "";
 
-          getEl("loan-mop").value =
-            customer.loanDetails?.modeOfPayment || "Cash";
+          // Mode of payment default
+          getEl("loan-mop").value = customer.loanDetails?.modeOfPayment || "Cash";
+
+          // Check if loan details are editable (no installment paid)
+          const loanEditable = canEditLoanDetailsForCustomer(customer);
+
+          // Show or hide loan detail fields based on editability
+          if (loanEditable && customer.loanDetails) {
+            // Show and populate loan detail fields
+            getEl("loan-details-fields").style.display = "block";
+            if (typeof setLoanDetailFieldsRequired === "function")
+              setLoanDetailFieldsRequired(true);
+
+            // Populate loan details fields
+            getEl("principal-amount").value = customer.loanDetails.principal || "";
+            getEl("interest-rate-modal").value = customer.loanDetails.interestRate || "";
+            getEl("collection-frequency").value = customer.loanDetails.frequency || "monthly";
+            getEl("first-collection-date").value = customer.loanDetails.firstCollectionDate || "";
+            getEl("loan-end-date").value = customer.loanDetails.loanEndDate || "";
+            getEl("loan-given-date").value = customer.loanDetails.loanGivenDate || "";
+          } else {
+            // Hide loan detail fields if not editable
+            getEl("loan-details-fields").style.display = "none";
+            if (typeof setLoanDetailFieldsRequired === "function")
+              setLoanDetailFieldsRequired(false);
+
+            // Notify user why loan details can't be edited
+            if (!loanEditable) {
+              showToast(
+                "error",
+                "Cannot Edit Loan Details",
+                "Loan details cannot be edited because at least one installment has already been paid."
+              );
+            }
+          }
 
           getEl("personal-info-fields").style.display = "block";
           getEl("kyc-info-fields").style.display = "block";
-          getEl("loan-details-fields").style.display = "none";
-          if (typeof setLoanDetailFieldsRequired === "function")
-            setLoanDetailFieldsRequired(false);
-          getEl("installment-preview").classList.add("hidden");
-
           getEl("customer-form-modal-title").textContent = "Edit Customer Info";
           getEl("customer-details-modal").classList.remove("show");
           getEl("customer-form-modal").classList.add("show");
@@ -2339,7 +2398,7 @@ document.addEventListener("DOMContentLoaded", () => {
           }
           showConfirmation(
             "Overwrite All Data?",
-            "Importing this file will permanently delete ALL your current customers and activities, replacing them with the data from the backup. This cannot be undone. Are you sure you want to proceed?",
+            "Importing this file will permanently delete ALL your current customers and replacing them with the data from the backup. This cannot be undone. Are you sure you want to proceed?",
             () => {
               const reader = new FileReader();
               reader.onload = async (event) => {
@@ -2479,6 +2538,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 delete updatePayload.kycDocs[key];
               }
             });
+            
             const finalUpdate = {
               name: updatePayload.name,
               phone: updatePayload.phone,
@@ -2487,20 +2547,129 @@ document.addEventListener("DOMContentLoaded", () => {
               address: updatePayload.address,
               whatsapp: updatePayload.whatsapp,
               aadharNumber: getEl("customer-aadhar-number").value.trim(),
-              panNumber: getEl("customer-pan-number")
-                .value.trim()
-                .toUpperCase(),
+              panNumber: getEl("customer-pan-number").value.trim().toUpperCase(),
               bankName: getEl("customer-bank-name")?.value || "",
               accountNumber: getEl("customer-account-number")?.value || "",
               ifsc: getEl("customer-ifsc")?.value || "",
             };
+
+            // File uploads
             if (aadharUrl) finalUpdate["kycDocs.aadharUrl"] = aadharUrl;
             if (panUrl) finalUpdate["kycDocs.panUrl"] = panUrl;
             if (picUrl) finalUpdate["kycDocs.picUrl"] = picUrl;
-            if (bankDetailsUrl)
-              finalUpdate["kycDocs.bankDetailsUrl"] = bankDetailsUrl;
+            if (bankDetailsUrl) finalUpdate["kycDocs.bankDetailsUrl"] = bankDetailsUrl;
 
+            // Always update mode of payment
             finalUpdate["loanDetails.modeOfPayment"] = getEl("loan-mop").value;
+
+            // Check if loan details are editable (no installment paid)
+            const existingDoc = await db.collection("customers").doc(id).get();
+            const existingData = existingDoc.exists ? existingDoc.data() : null;
+            const canEditLoan = canEditLoanDetailsForCustomer(existingData);
+
+            // Only include loan detail updates if they are editable
+            if (canEditLoan && existingData && existingData.loanDetails && existingData.paymentSchedule) {
+              // Get all the updated loan details
+              const updatedPrincipal = parseFloat(getEl("principal-amount")?.value);
+              const updatedRate = parseFloat(getEl("interest-rate-modal")?.value);
+              const updatedFrequency = getEl("collection-frequency")?.value;
+              const updatedFirstDate = getEl("first-collection-date")?.value;
+              const updatedEndDate = getEl("loan-end-date")?.value;
+              const updatedLoanGivenDate = getEl("loan-given-date")?.value;
+              
+              // Check if we have all values needed to recalculate schedule
+              if (!isNaN(updatedPrincipal) && !isNaN(updatedRate) && 
+                  updatedFrequency && updatedFirstDate && updatedEndDate && updatedLoanGivenDate) {
+                
+                // Calculate new installments based on updated date range and frequency
+                const newNBase = calculateInstallments(updatedFirstDate, updatedEndDate, updatedFrequency);
+                
+                // Calculate new total repayable amount
+                const newTotalInterest = calculateTotalInterest(
+                  updatedPrincipal, 
+                  updatedRate, 
+                  updatedLoanGivenDate, 
+                  updatedEndDate
+                );
+                const newTotalRepayable = updatedPrincipal + newTotalInterest;
+                
+                // Get the installment amount (either custom or standard)
+                let newSchedule;
+                const customAmtInput = getEl("custom-installment-amount");
+                let chosenN = newNBase;
+                
+                if (customAmtInput && customAmtInput.value) {
+                  const minInstallment = +(newTotalRepayable / newNBase).toFixed(2);
+                  let chosenAmt = parseFloat(customAmtInput.value);
+                  if (!chosenAmt || isNaN(chosenAmt) || chosenAmt < minInstallment) {
+                    chosenAmt = minInstallment;
+                  }
+                  chosenN = Math.max(1, Math.ceil(newTotalRepayable / chosenAmt));
+                  newSchedule = generateScheduleWithInstallmentAmount(
+                    +newTotalRepayable.toFixed(2),
+                    +chosenAmt.toFixed(2)
+                  );
+                } else {
+                  // Use standard equal installments
+                  newSchedule = generateSimpleInterestSchedule(
+                    +newTotalRepayable.toFixed(2), 
+                    newNBase
+                  );
+                }
+                
+                // Assign due dates to the new schedule
+                let currentDate = parseDateFlexible(updatedFirstDate);
+                newSchedule.forEach((inst, index) => {
+                  if (index > 0) {
+                    if (updatedFrequency === "daily") {
+                      currentDate.setDate(currentDate.getDate() + 1);
+                    } else if (updatedFrequency === "weekly") {
+                      currentDate.setDate(currentDate.getDate() + 7);
+                    } else if (updatedFrequency === "monthly") {
+                      const base = parseDateFlexible(updatedFirstDate);
+                      currentDate = addMonthsPreserveAnchor(base, index);
+                    }
+                  }
+                  const yyyy = currentDate.getFullYear();
+                  const mm = String(currentDate.getMonth() + 1).padStart(2, "0");
+                  const dd = String(currentDate.getDate()).padStart(2, "0");
+                  inst.dueDate = `${yyyy}-${mm}-${dd}`;
+                });
+                
+                // Update all loan details and the payment schedule
+                finalUpdate["loanDetails.principal"] = updatedPrincipal;
+                finalUpdate["loanDetails.interestRate"] = updatedRate;
+                finalUpdate["loanDetails.frequency"] = updatedFrequency;
+                finalUpdate["loanDetails.firstCollectionDate"] = updatedFirstDate;
+                finalUpdate["loanDetails.loanEndDate"] = updatedEndDate;
+                finalUpdate["loanDetails.loanGivenDate"] = updatedLoanGivenDate;
+                finalUpdate["loanDetails.installments"] = chosenN;
+                finalUpdate["paymentSchedule"] = newSchedule;
+                
+                // Update hidden fields if they exist
+                const instEl = getEl("chosen-n-installments");
+                if (instEl && instEl.value) {
+                  const instNum = parseInt(instEl.value, 10);
+                  if (!isNaN(instNum)) {
+                    finalUpdate["loanDetails.installments"] = instNum;
+                  }
+                }
+              } else {
+                // Individual updates if we don't have enough data for full recalculation
+                if (!isNaN(updatedPrincipal)) finalUpdate["loanDetails.principal"] = updatedPrincipal;
+                if (!isNaN(updatedRate)) finalUpdate["loanDetails.interestRate"] = updatedRate;
+                if (updatedFrequency) finalUpdate["loanDetails.frequency"] = updatedFrequency;
+                if (updatedFirstDate) finalUpdate["loanDetails.firstCollectionDate"] = updatedFirstDate;
+                if (updatedEndDate) finalUpdate["loanDetails.loanEndDate"] = updatedEndDate;
+                if (updatedLoanGivenDate) finalUpdate["loanDetails.loanGivenDate"] = updatedLoanGivenDate;
+                
+                const instEl = getEl("chosen-n-installments");
+                if (instEl && instEl.value) {
+                  const instNum = parseInt(instEl.value, 10);
+                  if (!isNaN(instNum)) finalUpdate["loanDetails.installments"] = instNum;
+                }
+              }
+            }
 
             await db.collection("customers").doc(id).update(finalUpdate);
             reopenAfterSaveId = id;
@@ -2767,17 +2936,17 @@ document.addEventListener("DOMContentLoaded", () => {
           if (isNaN(p) || isNaN(r) || isNaN(nBase) || !firstDate || !endDate)
             throw new Error("Please fill all new loan fields correctly.");
 
-          const loanGivenRaw =
+          const loanGivenDate =
             getEl("new-loan-given-date")?.value ||
             getEl("loan-given-date")?.value ||
             new Date();
-          const loanGivenDate =
-            typeof loanGivenRaw === "string"
-              ? parseDateFlexible(loanGivenRaw)
-              : loanGivenRaw;
+          const lgdDate =
+            typeof loanGivenDate === "string"
+              ? parseDateFlexible(loanGivenDate)
+              : loanGivenDate;
 
           const totalRepayable =
-            p + calculateTotalInterest(p, r, loanGivenDate, endDate);
+            p + calculateTotalInterest(p, r, lgdDate, endDate);
 
           const customAmtInput = getEl("new-loan-custom-installment-amount");
           let chosenN = nBase;
@@ -2819,7 +2988,7 @@ document.addEventListener("DOMContentLoaded", () => {
               interestRate: r,
               installments: chosenN,
               frequency: freq,
-              loanGivenDate: formatForInput({ id: "any" }, loanGivenDate),
+              loanGivenDate: formatForInput({ id: "any" }, lgdDate),
               firstCollectionDate: firstDate,
               loanEndDate: endDate,
               type: "simple_interest",
