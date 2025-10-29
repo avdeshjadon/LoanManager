@@ -134,7 +134,7 @@ const openWhatsApp = async (customer) => {
     phone = "91" + phone;
   }
 
-  const { loanDetails, paymentSchedule, name } = customer;
+  const { loanDetails, paymentSchedule } = customer;
   const totalPaid = paymentSchedule.reduce((sum, p) => sum + p.amountPaid, 0);
 
   const totalInterest = calculateTotalInterest(
@@ -150,7 +150,9 @@ const openWhatsApp = async (customer) => {
     (p) => p.status === "Due" || p.status === "Pending"
   );
 
-  let message = `Hello ${name},\n\nHere is a summary of your loan with Global Finance Consultant (Finance ${
+  // Policy Change: Use respectful greeting instead of customer name
+  const greeting = "Respected Partner";
+  let message = `Hello ${greeting},\n\nHere is a summary of your loan with Global Finance Consultant (Finance ${
     customer.financeCount || 1
   }):\n\n`;
   message += `*Principal:* ${formatCurrency(loanDetails.principal)}\n`;
@@ -209,6 +211,7 @@ window.processProfitData = (allCusts) => {
 document.addEventListener("DOMContentLoaded", () => {
   let recentActivities = [];
   let currentUser = null;
+  let activeSortKey = "name";
 
   const getEl = (id) => document.getElementById(id);
   const showToast = (type, title, message) => {
@@ -1011,7 +1014,7 @@ document.addEventListener("DOMContentLoaded", () => {
     renderUpcomingAndOverdueEmis(window.allCustomers.active);
     renderActivityLog();
   };
-
+  
   const renderIndividualLoanList = (element, data) => {
     if (!element) return;
     element.innerHTML = "";
@@ -1050,8 +1053,26 @@ document.addEventListener("DOMContentLoaded", () => {
       element.appendChild(li);
     });
   };
+  
+  const getSortValue = (loan, key) => {
+    switch (key) {
+        case "lastCollectionDate": {
+            // Find the most recent date a payment was recorded
+            const lastPaid = loan.paymentSchedule?.filter(p => p.status === "Paid" && p.paidDate).sort((a, b) => new Date(b.paidDate) - new Date(a.paidDate))[0];
+            // Use loan given date as a fallback if no payments exist
+            const fallbackDate = loan.loanDetails?.loanGivenDate ? new Date(loan.loanDetails.loanGivenDate) : new Date(0);
+            return lastPaid ? new Date(lastPaid.paidDate) : fallbackDate;
+        }
+        case "firstCollectionDate": {
+            return loan.loanDetails?.firstCollectionDate ? new Date(loan.loanDetails.firstCollectionDate) : new Date(0);
+        }
+        case "name":
+        default:
+            return loan.name.toLowerCase();
+    }
+  };
 
-  const renderActiveCustomerList = (customerArray) => {
+  const renderActiveCustomerList = (customerArray, sortKey = "name") => {
     const listEl = getEl("customers-list");
     if (!listEl) return;
 
@@ -1062,19 +1083,39 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       customerGroups.get(customer.name).push(customer);
     });
+    
+    // Convert Map values to an array for sorting
+    const groupedCustomers = Array.from(customerGroups.entries()).map(([name, loans]) => {
+        // Sort loans within the group by financeCount to always show the latest loan's ID
+        const latestLoan = loans.sort((a, b) => (b.financeCount || 1) - (a.financeCount || 1))[0];
+        
+        // Determine the sort value based on the chosen key, using the latest/representative loan
+        const sortValue = getSortValue(latestLoan, sortKey);
 
-    if (customerGroups.size === 0) {
+        return { name, loans, latestLoan, sortValue };
+    });
+
+    // Sort the grouped customers
+    groupedCustomers.sort((a, b) => {
+        if (sortKey === "name") {
+            return a.sortValue.localeCompare(b.sortValue);
+        } else {
+            // Sort by date/time (most recent first)
+            return b.sortValue.getTime() - a.sortValue.getTime();
+        }
+    });
+
+    if (groupedCustomers.length === 0) {
       listEl.innerHTML = `<li class="activity-item" style="cursor:default; justify-content:center;"><p>No customers found.</p></li>`;
       return;
     }
 
     let listHtml = "";
-    for (const [name, loans] of customerGroups.entries()) {
-      const latestLoan = [...loans].sort(
-        (a, b) => (b.financeCount || 1) - (a.financeCount || 1)
-      )[0];
+    for (const { name, loans, latestLoan } of groupedCustomers) {
       const totalActiveLoans = loans.length;
+      
       const totalOutstanding = loans.reduce((sum, loan) => {
+        if (!loan.loanDetails || !loan.paymentSchedule) return sum;
         const totalInterest = calculateTotalInterest(
           loan.loanDetails.principal,
           loan.loanDetails.interestRate,
@@ -1083,10 +1124,10 @@ document.addEventListener("DOMContentLoaded", () => {
         );
         const totalRepayable = loan.loanDetails.principal + totalInterest;
         const totalPaid = loan.paymentSchedule.reduce(
-          (s, p) => s + p.amountPaid,
+          (s, p) => s + (p.amountPaid || 0),
           0
         );
-        return sum + (totalRepayable - totalPaid);
+        return sum + Math.max(0, totalRepayable - totalPaid);
       }, 0);
 
       const nameHtml = `<div class="customer-name">${name}</div>`;
@@ -1116,8 +1157,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const populateCustomerLists = () => {
     getEl(
       "active-accounts-section"
-    ).innerHTML = `<div class="form-card"><div class="card-header"><h3>Active Accounts</h3><button class="btn btn-outline" id="export-active-btn"><i class="fas fa-file-excel"></i> Export to Excel</button></div><div class="form-group"><input type="text" id="search-customers" class="form-control" placeholder="Search active customers..." /></div><ul id="customers-list" class="customer-list"></ul></div>`;
-    renderActiveCustomerList(window.allCustomers.active);
+    ).innerHTML = `<div class="form-card"><div class="card-header"><h3>Active Accounts</h3><div class="form-row" style="grid-template-columns: 1fr 1fr; gap: 1rem; width: 100%; max-width: 400px; margin-left: auto;"><div class="form-group" style="margin-bottom: 0;"><select id="customer-sort-select" class="form-control"><option value="name">Sort by: Name (A-Z)</option><option value="firstCollectionDate">Sort by: First Date</option><option value="lastCollectionDate">Sort by: Last Date</option></select></div><button class="btn btn-outline" id="export-active-btn" style="height: 48px;"><i class="fas fa-file-excel"></i> Export</button></div></div><div class="form-group"><input type="text" id="search-customers" class="form-control" placeholder="Search active customers..." /></div><ul id="customers-list" class="customer-list"></ul></div>`;
+    renderActiveCustomerList(window.allCustomers.active, activeSortKey);
+    getEl("customer-sort-select").value = activeSortKey; // Set selected value
 
     getEl(
       "settled-accounts-section"
@@ -1166,13 +1208,9 @@ document.addEventListener("DOMContentLoaded", () => {
         .slice(0, 5)
         .map((item) => {
           const formattedDate = formatForDisplay(item.date);
-          return `<li class="activity-item" data-id="${
-            item.customerId
-          }"><div class="activity-info"><span class="activity-name">${
-            item.name
-          }</span><span class="activity-date">${formattedDate}</span></div><div class="activity-value"><span class="activity-amount">${formatCurrency(
-            item.amount
-          )}</span></div></li>`;
+          return `<li class="activity-item" data-id="${item.customerId}"><div class="activity-info"><span class="activity-name">${item.name}</span><span class="activity-date">${formattedDate}</span></div><div class="activity-value"><span class="activity-amount">${formatCurrency(
+              item.amount
+            )}</span></div></li>`;
         })
         .join("")}</ul>`;
     };
@@ -1303,10 +1341,25 @@ document.addEventListener("DOMContentLoaded", () => {
         ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline">${label}</a>`
         : '<span class="value">N/A</span>';
     const kycDocs = customer.kycDocs || {};
-    const aadharButton = createKycViewButton(kycDocs.aadharUrl);
+    const aadharFrontButton = createKycViewButton(kycDocs.aadharUrlFront, "View Front");
+    const aadharBackButton = createKycViewButton(kycDocs.aadharUrlBack, "View Back");
     const panButton = createKycViewButton(kycDocs.panUrl);
     const picButton = createKycViewButton(kycDocs.picUrl, "View Photo");
     const bankButton = createKycViewButton(kycDocs.bankDetailsUrl);
+    
+    // Calculate all loans total for the display
+    const allLoans = [...window.allCustomers.active, ...window.allCustomers.settled]
+      .filter(c => c.name === customer.name && c.loanDetails && c.paymentSchedule);
+    let totalP = 0, totalI = 0, totalPaidAll = 0;
+    allLoans.forEach(c => {
+        const li = c.loanDetails;
+        const interest = calculateTotalInterest(li.principal, li.interestRate, li.loanGivenDate, li.loanEndDate);
+        totalP += Number(li.principal || 0);
+        totalI += Number(interest || 0);
+        totalPaidAll += c.paymentSchedule.reduce((s, p) => s + (p.amountPaid || 0), 0);
+    });
+    const totalOutstandingAll = Math.max(0, totalP + totalI - totalPaidAll);
+
 
     let avatarHtml;
     if (kycDocs.picUrl) {
@@ -1340,44 +1393,22 @@ document.addEventListener("DOMContentLoaded", () => {
     )}</span></div>
     </div>
     <div class="profile-section"><h4>Customer Loan Totals</h4>
-      ${(() => {
-        const allLoans = [
-          ...window.allCustomers.active,
-          ...window.allCustomers.settled,
-        ].filter(
-          (c) => c.name === customer.name && c.loanDetails && c.paymentSchedule
-        );
-        let totalP = 0,
-          totalI = 0,
-          totalPaidAll = 0;
-        allLoans.forEach((c) => {
-          const li = c.loanDetails;
-          const interest = calculateTotalInterest(
-            li.principal,
-            li.interestRate,
-            li.loanGivenDate,
-            li.loanEndDate
-          );
-          totalP += Number(li.principal || 0);
-          totalI += Number(interest || 0);
-          totalPaidAll += c.paymentSchedule.reduce(
-            (s, p) => s + (p.amountPaid || 0),
-            0
-          );
-        });
-        const outstanding = Math.max(0, totalP + totalI - totalPaidAll);
-        return `<div class="profile-stat"><span class="label">Total Principal (All Loans)</span><span class="value">${formatCurrency(
+        <div class="profile-stat"><span class="label">Total Principal (All Loans)</span><span class="value">${formatCurrency(
           totalP
         )}</span></div>
-                <div class="profile-stat"><span class="label">Total Interest (All Loans)</span><span class="value">${formatCurrency(
-                  totalI
-                )}</span></div>
-                <div class="profile-stat"><span class="label">Outstanding (All Loans)</span><span class="value">${formatCurrency(
-                  outstanding
-                )}</span></div>`;
-      })()}
+        <div class="profile-stat"><span class="label">Total Interest (All Loans)</span><span class="value">${formatCurrency(
+          totalI
+        )}</span></div>
+        <div class="profile-stat"><span class="label">Outstanding (All Loans)</span><span class="value">${formatCurrency(
+          totalOutstandingAll
+        )}</span></div>
     </div>
-    <div class="profile-section"><h4>KYC Documents</h4><div class="profile-stat"><span class="label">Aadhar Card</span>${aadharButton}</div><div class="profile-stat"><span class="label">PAN Card</span>${panButton}</div><div class="profile-stat"><span class="label">Client Photo</span>${picButton}</div><div class="profile-stat"><span class="label">Bank Details</span>${bankButton}</div>
+    <div class="profile-section"><h4>KYC Documents</h4>
+    <div class="profile-stat"><span class="label">Aadhar Card (Front)</span>${aadharFrontButton}</div>
+    <div class="profile-stat"><span class="label">Aadhar Card (Back)</span>${aadharBackButton}</div>
+    <div class="profile-stat"><span class="label">PAN Card</span>${panButton}</div>
+    <div class="profile-stat"><span class="label">Client Photo</span>${picButton}</div>
+    <div class="profile-stat"><span class="label">Bank Details</span>${bankButton}</div>
     <div class="profile-stat"><span class="label">Bank Name</span><span class="value">${bankNameDisplay}</span></div>
     <div class="profile-stat"><span class="label">Account Number</span><span class="value">${accountNumberDisplay}</span></div>
     <div class="profile-stat"><span class="label">IFSC</span><span class="value">${ifscDisplay}</span></div>
@@ -2515,9 +2546,10 @@ document.addEventListener("DOMContentLoaded", () => {
           };
 
           toggleButtonLoading(saveBtn, true, "Uploading Files...");
-          const [aadharUrl, panUrl, picUrl, bankDetailsUrl] = await Promise.all(
+          const [aadharUrlFront, aadharUrlBack, panUrl, picUrl, bankDetailsUrl] = await Promise.all(
             [
-              uploadFile("customer-aadhar-file", "aadhar"),
+              uploadFile("customer-aadhar-file-front", "aadhar-front"),
+              uploadFile("customer-aadhar-file-back", "aadhar-back"),
               uploadFile("customer-pan-file", "pan"),
               uploadFile("customer-pic-file", "picture"),
               uploadFile("customer-bank-file", "bank"),
@@ -2525,7 +2557,8 @@ document.addEventListener("DOMContentLoaded", () => {
           );
 
           customerData.kycDocs = {
-            ...(aadharUrl && { aadharUrl }),
+            ...(aadharUrlFront && { aadharUrlFront }),
+            ...(aadharUrlBack && { aadharUrlBack }),
             ...(panUrl && { panUrl }),
             ...(picUrl && { picUrl }),
             ...(bankDetailsUrl && { bankDetailsUrl }),
@@ -2554,7 +2587,8 @@ document.addEventListener("DOMContentLoaded", () => {
             };
 
             // File uploads
-            if (aadharUrl) finalUpdate["kycDocs.aadharUrl"] = aadharUrl;
+            if (aadharUrlFront) finalUpdate["kycDocs.aadharUrlFront"] = aadharUrlFront;
+            if (aadharUrlBack) finalUpdate["kycDocs.aadharUrlBack"] = aadharUrlBack;
             if (panUrl) finalUpdate["kycDocs.panUrl"] = panUrl;
             if (picUrl) finalUpdate["kycDocs.picUrl"] = picUrl;
             if (bankDetailsUrl) finalUpdate["kycDocs.bankDetailsUrl"] = bankDetailsUrl;
@@ -3203,6 +3237,13 @@ document.addEventListener("DOMContentLoaded", () => {
           labelSpan.textContent = displayName;
           if (label) label.title = file ? file.name : "";
         }
+      } else if (e.target.id === "customer-sort-select") {
+        activeSortKey = e.target.value;
+        const searchTerm = getEl("search-customers")?.value.toLowerCase() || "";
+        const filtered = window.allCustomers.active.filter((c) =>
+          c.name.toLowerCase().includes(searchTerm)
+        );
+        renderActiveCustomerList(filtered, activeSortKey);
       }
     });
 
@@ -3212,7 +3253,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const filtered = window.allCustomers.active.filter((c) =>
           c.name.toLowerCase().includes(term)
         );
-        renderActiveCustomerList(filtered);
+        renderActiveCustomerList(filtered, activeSortKey);
       }
     });
   }

@@ -406,20 +406,38 @@
               </p>
               <div class="form-row">
                 <div class="form-group">
-                  <label for="customer-aadhar-file">Aadhar Card</label>
+                  <label for="customer-aadhar-file-front">Aadhar Card (Front)</label>
                   <div class="file-input-wrapper">
                     <input
                       type="file"
-                      id="customer-aadhar-file"
+                      id="customer-aadhar-file-front"
                       class="file-input"
                       accept="application/pdf,image/*"
                     />
-                    <label for="customer-aadhar-file" class="file-input-label">
+                    <label for="customer-aadhar-file-front" class="file-input-label">
                       <i class="fas fa-cloud-upload-alt"></i>
                       <span>Choose a file...</span>
                     </label>
                   </div>
                 </div>
+                <div class="form-group">
+                  <label for="customer-aadhar-file-back">Aadhar Card (Back)</label>
+                  <div class="file-input-wrapper">
+                    <input
+                      type="file"
+                      id="customer-aadhar-file-back"
+                      class="file-input"
+                      accept="application/pdf,image/*"
+                    />
+                    <label for="customer-aadhar-file-back" class="file-input-label">
+                      <i class="fas fa-cloud-upload-alt"></i>
+                      <span>Choose a file...</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-row">
                 <div class="form-group">
                   <label for="customer-pan-file">PAN Card</label>
                   <div class="file-input-wrapper">
@@ -430,6 +448,21 @@
                       accept="application/pdf,image/*"
                     />
                     <label for="customer-pan-file" class="file-input-label">
+                      <i class="fas fa-cloud-upload-alt"></i>
+                      <span>Choose a file...</span>
+                    </label>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="customer-pic-file">Client's Picture</label>
+                  <div class="file-input-wrapper">
+                    <input
+                      type="file"
+                      id="customer-pic-file"
+                      class="file-input"
+                      accept="image/*"
+                    />
+                    <label for="customer-pic-file" class="file-input-label">
                       <i class="fas fa-cloud-upload-alt"></i>
                       <span>Choose a file...</span>
                     </label>
@@ -464,21 +497,6 @@
                 </div>
               </div>
               <div class="form-row">
-                <div class="form-group">
-                  <label for="customer-pic-file">Client's Picture</label>
-                  <div class="file-input-wrapper">
-                    <input
-                      type="file"
-                      id="customer-pic-file"
-                      class="file-input"
-                      accept="image/*"
-                    />
-                    <label for="customer-pic-file" class="file-input-label">
-                      <i class="fas fa-cloud-upload-alt"></i>
-                      <span>Choose a file...</span>
-                    </label>
-                  </div>
-                </div>
                 <div class="form-group">
                   <label for="customer-bank-file"
                     >Bank Details (e.g., Cheque)</label
@@ -517,10 +535,8 @@
                 <label for="loan-mop">Mode of Payment (Loan Given)</label>
                 <select id="loan-mop" class="form-control" required>
                   <option value="Cash">Cash</option>
-                  <option value="Online (Paytm)">Online (Paytm)</option>
-                  <option value="Online (GPay)">Online (GPay)</option>
-                  <option value="Online (PhonePe)">Online (PhonePe)</option>
-                  <option value="Online (Other)">Online (Other)</option>
+                  <option value="UPI">UPI</option>
+                  <option value="Internet Banking">Internet Banking</option>
                 </select>
               </div>
 
@@ -694,10 +710,8 @@
               <select id="payment-mop" class="form-control" required>
                 <option value="" disabled selected>Select Mode...</option>
                 <option value="Cash">Cash</option>
-                <option value="Online (Paytm)">Online (Paytm)</option>
-                <option value="Online (GPay)">Online (GPay)</option>
-                <option value="Online (PhonePe)">Online (PhonePe)</option>
-                <option value="Online (Other)">Online (Other)</option>
+                <option value="UPI">UPI</option>
+                <option value="Internet Banking">Internet Banking</option>
               </select>
             </div>
 
@@ -805,10 +819,8 @@
               <label for="new-loan-mop">Mode of Payment (Loan Given)</label>
               <select id="new-loan-mop" class="form-control" required>
                 <option value="Cash">Cash</option>
-                <option value="Online (Paytm)">Online (Paytm)</option>
-                <option value="Online (GPay)">Online (GPay)</option>
-                <option value="Online (PhonePe)">Online (PhonePe)</option>
-                <option value="Online (Other)">Online (Other)</option>
+                <option value="UPI">UPI</option>
+                <option value="Internet Banking">Internet Banking</option>
               </select>
             </div>
             <div

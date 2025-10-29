@@ -62,6 +62,7 @@ async function generateAndDownloadPDF(customerId) {
   const mutedColor = "#718096";
   const borderColor = "#e2e8f0";
   const backgroundColor = "#f8fafc";
+  const totalLoanBgColor = "#e6e9f8"; // Light background for the new totals section
 
   const paidBgColor = "#dcfce7";
   const paidTextColor = "#166534";
@@ -101,9 +102,11 @@ async function generateAndDownloadPDF(customerId) {
 
   const rowHeight = 18;
   const headerHeight = 40;
-  // --- UPDATED: Increased row count for left box ---
-  const leftContentHeight = headerHeight + 12 * rowHeight; // 7 original + 5 new rows
-  const rightContentHeight = headerHeight + 3 * rowHeight;
+  const contentRows = 7; 
+  // Determine box height based on maximum required content, including the new KYC fields
+  const kycRows = 5;
+  const leftContentHeight = headerHeight + contentRows * rowHeight + 15;
+  const rightContentHeight = headerHeight + (3 * rowHeight) + 15 + headerHeight + kycRows * rowHeight; // Account Summary (3 rows) + KYC Header + 5 KYC rows
   const boxHeight = Math.max(leftContentHeight, rightContentHeight) + 15;
 
   doc.setFillColor(backgroundColor);
@@ -128,16 +131,18 @@ async function generateAndDownloadPDF(customerId) {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
     doc.setTextColor(headingColor);
-    doc.text(value || "N/A", startX + boxWidth - 15, startY, { align: "right" }); // Added fallback for value
+    doc.text(value || "N/A", startX + boxWidth - 15, startY, { align: "right" });
     return startY + rowHeight;
   };
 
+  // --- Left Box: Customer & Loan Details ---
   leftY += 25;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
   doc.setTextColor(brandColor);
   doc.text("Customer & Loan Details", leftBoxX + 15, leftY);
   leftY += 15;
+  
   leftY = drawDetailRow("Customer Name:", name, leftBoxX, leftY);
   leftY = drawDetailRow(
     "Loan Given Date:",
@@ -175,24 +180,14 @@ async function generateAndDownloadPDF(customerId) {
     leftBoxX,
     leftY
   );
-  // --- NEW DETAILS ADDED ---
-  doc.setLineWidth(0.5);
-  doc.setDrawColor(borderColor);
-  doc.line(leftBoxX + 10, leftY - (rowHeight/2), leftBoxX + boxWidth - 10, leftY - (rowHeight/2)); // Separator line
-
-  leftY = drawDetailRow("Aadhar Number:", customer.aadharNumber, leftBoxX, leftY);
-  leftY = drawDetailRow("PAN Number:", customer.panNumber, leftBoxX, leftY);
-  leftY = drawDetailRow("Bank Name:", customer.bankName, leftBoxX, leftY);
-  leftY = drawDetailRow("Account Number:", customer.accountNumber, leftBoxX, leftY);
-  leftY = drawDetailRow("IFSC Code:", customer.ifsc, leftBoxX, leftY);
-  // --- END NEW DETAILS ---
 
 
+  // --- Right Box: Account Summary (Current Loan) ---
   rightY += 25;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
   doc.setTextColor(brandColor);
-  doc.text("Account Summary", rightBoxX + 15, rightY);
+  doc.text("Account Summary (Current Loan)", rightBoxX + 15, rightY);
   rightY += 15;
   rightY = drawDetailRow(
     "Total Amount Paid:",
@@ -207,13 +202,88 @@ async function generateAndDownloadPDF(customerId) {
     rightY
   );
   rightY = drawDetailRow(
-    "Total Interest:",
+    "Total Interest Payable:",
     formatCurrencyPDF(totalInterestPayable),
     rightBoxX,
     rightY
   );
+  
+  // --- NEW: KYC & Bank Details in Right Box (Aligned Below Summary) ---
+  rightY += 15; // Extra space after summary
+  
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(brandColor);
+  doc.text("KYC & Bank Details", rightBoxX + 15, rightY);
+  rightY += 15;
 
-  y = boxStartY + boxHeight + 30;
+  rightY = drawDetailRow("Aadhar No:", customer.aadharNumber || "N/A", rightBoxX, rightY);
+  rightY = drawDetailRow("PAN No:", customer.panNumber || "N/A", rightBoxX, rightY);
+  rightY = drawDetailRow("Bank Name:", customer.bankName || "N/A", rightBoxX, rightY);
+  rightY = drawDetailRow("IFSC Code:", customer.ifsc || "N/A", rightBoxX, rightY);
+  rightY = drawDetailRow("Account No:", customer.accountNumber || "N/A", rightBoxX, rightY);
+
+
+  // --- NEW SECTION: Customer Loan Totals (All Loans) ---
+  y = boxStartY + boxHeight + 20; // Start 20pt below the main boxes
+  
+  // Logic to calculate All Loan Totals (This relies on window.allCustomers, which must be loaded)
+  const allLoans = [...window.allCustomers.active, ...window.allCustomers.settled]
+      .filter(c => c.name === name && c.loanDetails && c.paymentSchedule);
+  let totalP = 0, totalI = 0, totalPaidAll = 0;
+  allLoans.forEach(c => {
+      const li = c.loanDetails;
+      // Recalculate interest for each loan
+      const interest = calculateTotalInterest(li.principal, li.interestRate, li.loanGivenDate, li.loanEndDate);
+      totalP += Number(li.principal || 0);
+      totalI += Number(interest || 0);
+      totalPaidAll += c.paymentSchedule.reduce((s, p) => s + (p.amountPaid || 0), 0);
+  });
+  const totalOutstandingAll = Math.max(0, totalP + totalI - totalPaidAll);
+
+  const totalBoxX = 40;
+  const totalBoxWidth = pageWidth - 80;
+  const totalRows = 3;
+  const totalBoxHeight = headerHeight + totalRows * rowHeight + 15;
+  const totalBoxStartY = y;
+
+  // Draw the full-width box for all loans totals
+  doc.setFillColor(totalLoanBgColor);
+  doc.setDrawColor(brandColor);
+  doc.setLineWidth(1);
+  doc.rect(totalBoxX, totalBoxStartY, totalBoxWidth, totalBoxHeight, "FD");
+  
+  doc.setFillColor(brandColor);
+  doc.rect(totalBoxX, totalBoxStartY, totalBoxWidth, 5, "F");
+
+  let totalY = totalBoxStartY;
+  totalY += 25;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(brandColor);
+  doc.text("Customer Loan Totals (All Loans)", totalBoxX + 15, totalY);
+  totalY += 15;
+  
+  // Use a modified drawDetailRow for the single wide box
+  const drawWideDetailRow = (label, value, startY) => {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(mutedColor);
+    doc.text(label, totalBoxX + 15, startY);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(headingColor);
+    doc.text(value || "N/A", totalBoxX + totalBoxWidth - 15, startY, { align: "right" });
+    return startY + rowHeight;
+  };
+  
+  totalY = drawWideDetailRow("Total Principal (All Loans):", formatCurrencyPDF(totalP), totalY);
+  totalY = drawWideDetailRow("Total Interest (All Loans):", formatCurrencyPDF(totalI), totalY);
+  totalY = drawWideDetailRow("Outstanding (All Loans):", formatCurrencyPDF(totalOutstandingAll), totalY);
+
+  // Set Y position for the start of the next section (table)
+  y = totalBoxStartY + totalBoxHeight + 30;
 
   // --- Table Title ---
   doc.setFontSize(14);
