@@ -2874,6 +2874,16 @@ const toggleButtonLoading = (btn, isLoading, text = "Loading...") => {
         const id = getEl("customer-id").value;
         const saveBtn = getEl("customer-modal-save");
         toggleButtonLoading(saveBtn, true, id ? "Updating..." : "Saving...");
+        if (!id) { 
+                const p = parseFloat(getEl("principal-amount").value);
+                const r = parseFloat(getEl("interest-rate-modal").value);
+                
+                if (isNaN(p) || isNaN(r) || p <= 0) {
+                    showToast("error", "Invalid Input", "Please enter a valid Principal and Interest rate.");
+                    toggleButtonLoading(saveBtn, false); // Button ko re-enable karo
+                    return; // Function se bahar nikal jao
+                }
+              }
 
         try {
           const customerData = {
