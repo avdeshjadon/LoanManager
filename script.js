@@ -160,9 +160,22 @@ const openWhatsApp = async (customer) => {
   message += `*Outstanding Balance:* ${formatCurrency(outstanding)}\n\n`;
 
   if (nextDue) {
-    message += `*Next Payment Due:* ${formatCurrency(
-      nextDue.pendingAmount
-    )} on ${nextDue.dueDate}.\n\n`;
+    let dueAmount = nextDue.pendingAmount;
+    // For monthly loan, show principal/interest breakdown
+    if (customer.loanTermType === "monthly" && nextDue.status === "Pending") {
+      dueAmount = nextDue.pendingAmount; // This is now just principal
+      message += `*Principal Due:* ${formatCurrency(dueAmount)} on ${
+        nextDue.dueDate
+      }.\n\n`;
+    } else if (customer.loanTermType === "monthly") {
+      message += `*Full Amount Due:* ${formatCurrency(
+        dueAmount
+      )} on ${nextDue.dueDate}.\n\n`;
+    } else {
+      message += `*Next Payment Due:* ${formatCurrency(
+        dueAmount
+      )} on ${nextDue.dueDate}.\n\n`;
+    }
   } else {
     message += `Your loan has been fully paid. Thank you!\n\n`;
   }
@@ -230,7 +243,7 @@ document.addEventListener("DOMContentLoaded", () => {
       setTimeout(() => toast.remove(), 400);
     }, 5000);
   };
-  const toggleButtonLoading = (btn, isLoading, text = "Loading...") => {
+const toggleButtonLoading = (btn, isLoading, text = "Loading...") => {
     if (!btn) return;
     const spinner = btn.querySelector(".loading-spinner");
     const btnText = btn.querySelector("span:not(.loading-spinner)");
@@ -239,7 +252,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     btn.disabled = isLoading;
     if (spinner) spinner.classList.toggle("hidden", !isLoading);
-    if (btnText) {
+    if (btnText) { // <-- Yeh line (if (btnText)) zaroori hai
       btnText.textContent = isLoading ? text : btnText.dataset.originalText;
     }
   };
@@ -934,6 +947,7 @@ document.addEventListener("DOMContentLoaded", () => {
               amount: inst.pendingAmount || inst.amountDue || 0,
               date: inst.dueDate,
               customerId: customer.id,
+              isMonthly: customer.loanTermType === "monthly",
             });
           }
         });
@@ -974,7 +988,14 @@ document.addEventListener("DOMContentLoaded", () => {
         ${todaysEmis
           .map((item) => {
             const formattedDate = formatForDisplay(item.date);
-            return `<li class="activity-item" data-id="${item.customerId}"><div class="activity-info"><span class="activity-name">${item.name}</span><span class="activity-date">${formattedDate}</span></div><div class="activity-value"><span class="activity-amount">${formatCurrency(
+            const monthlyBadge = item.isMonthly
+              ? '<span class="finance-status-badge monthly-loan" style="font-size: 0.7rem; margin-left: 8px;">Monthly</span>'
+              : "";
+            return `<li class="activity-item" data-id="${
+              item.customerId
+            }"><div class="activity-info"><span class="activity-name">${
+              item.name
+            }${monthlyBadge}</span><span class="activity-date">${formattedDate}</span></div><div class="activity-value"><span class="activity-amount">${formatCurrency(
               item.amount
             )}</span></div></li>`;
           })
@@ -1014,7 +1035,7 @@ document.addEventListener("DOMContentLoaded", () => {
     renderUpcomingAndOverdueEmis(window.allCustomers.active);
     renderActivityLog();
   };
-  
+
   const renderIndividualLoanList = (element, data) => {
     if (!element) return;
     element.innerHTML = "";
@@ -1038,8 +1059,14 @@ document.addEventListener("DOMContentLoaded", () => {
       );
       const interestEarned = Math.max(0, totalPaid - c.loanDetails.principal);
 
+      // NEW: Add Monthly Loan badge
+      const isMonthly = c.loanTermType === "monthly";
+      const monthlyBadge = isMonthly
+        ? '<span class="finance-status-badge monthly-loan">Monthly Loan</span>'
+        : "";
+
       const financeStatusText = `Finance ${financeCount} - ${c.status}`;
-      const nameHtml = `<div class="customer-name">${c.name} <span class="finance-status-badge">${financeStatusText}</span></div>`;
+      const nameHtml = `<div class="customer-name">${c.name} <span class="finance-status-badge">${financeStatusText}</span>${monthlyBadge}</div>`;
       const detailsHtml = `<span>Principal: ${formatCurrency(
         c.loanDetails.principal
       )}</span><span class="list-profit-display success">Interest: ${formatCurrency(
@@ -1053,22 +1080,28 @@ document.addEventListener("DOMContentLoaded", () => {
       element.appendChild(li);
     });
   };
-  
+
   const getSortValue = (loan, key) => {
     switch (key) {
-        case "lastCollectionDate": {
-            // Find the most recent date a payment was recorded
-            const lastPaid = loan.paymentSchedule?.filter(p => p.status === "Paid" && p.paidDate).sort((a, b) => new Date(b.paidDate) - new Date(a.paidDate))[0];
-            // Use loan given date as a fallback if no payments exist
-            const fallbackDate = loan.loanDetails?.loanGivenDate ? new Date(loan.loanDetails.loanGivenDate) : new Date(0);
-            return lastPaid ? new Date(lastPaid.paidDate) : fallbackDate;
-        }
-        case "firstCollectionDate": {
-            return loan.loanDetails?.firstCollectionDate ? new Date(loan.loanDetails.firstCollectionDate) : new Date(0);
-        }
-        case "name":
-        default:
-            return loan.name.toLowerCase();
+      case "lastCollectionDate": {
+        // Find the most recent date a payment was recorded
+        const lastPaid = loan.paymentSchedule
+          ?.filter((p) => p.status === "Paid" && p.paidDate)
+          .sort((a, b) => new Date(b.paidDate) - new Date(a.paidDate))[0];
+        // Use loan given date as a fallback if no payments exist
+        const fallbackDate = loan.loanDetails?.loanGivenDate
+          ? new Date(loan.loanDetails.loanGivenDate)
+          : new Date(0);
+        return lastPaid ? new Date(lastPaid.paidDate) : fallbackDate;
+      }
+      case "firstCollectionDate": {
+        return loan.loanDetails?.firstCollectionDate
+          ? new Date(loan.loanDetails.firstCollectionDate)
+          : new Date(0);
+      }
+      case "name":
+      default:
+        return loan.name.toLowerCase();
     }
   };
 
@@ -1083,26 +1116,30 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       customerGroups.get(customer.name).push(customer);
     });
-    
+
     // Convert Map values to an array for sorting
-    const groupedCustomers = Array.from(customerGroups.entries()).map(([name, loans]) => {
+    const groupedCustomers = Array.from(customerGroups.entries()).map(
+      ([name, loans]) => {
         // Sort loans within the group by financeCount to always show the latest loan's ID
-        const latestLoan = loans.sort((a, b) => (b.financeCount || 1) - (a.financeCount || 1))[0];
-        
+        const latestLoan = loans.sort(
+          (a, b) => (b.financeCount || 1) - (a.financeCount || 1)
+        )[0];
+
         // Determine the sort value based on the chosen key, using the latest/representative loan
         const sortValue = getSortValue(latestLoan, sortKey);
 
         return { name, loans, latestLoan, sortValue };
-    });
+      }
+    );
 
     // Sort the grouped customers
     groupedCustomers.sort((a, b) => {
-        if (sortKey === "name") {
-            return a.sortValue.localeCompare(b.sortValue);
-        } else {
-            // Sort by date/time (most recent first)
-            return b.sortValue.getTime() - a.sortValue.getTime();
-        }
+      if (sortKey === "name") {
+        return a.sortValue.localeCompare(b.sortValue);
+      } else {
+        // Sort by date/time (most recent first)
+        return b.sortValue.getTime() - a.sortValue.getTime();
+      }
     });
 
     if (groupedCustomers.length === 0) {
@@ -1113,7 +1150,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let listHtml = "";
     for (const { name, loans, latestLoan } of groupedCustomers) {
       const totalActiveLoans = loans.length;
-      
+
       const totalOutstanding = loans.reduce((sum, loan) => {
         if (!loan.loanDetails || !loan.paymentSchedule) return sum;
         const totalInterest = calculateTotalInterest(
@@ -1139,6 +1176,12 @@ document.addEventListener("DOMContentLoaded", () => {
           ? `<span class="finance-count-badge">${totalActiveLoans}</span>`
           : "";
 
+      // NEW: Add Monthly Loan badge if the LATEST loan is monthly
+      const isMonthly = latestLoan.loanTermType === "monthly";
+      const monthlyBadge = isMonthly
+        ? '<span class="finance-status-badge monthly-loan">Monthly Loan</span>'
+        : "";
+
       listHtml += `
             <li class="customer-item">
                 <div class="customer-info" data-id="${latestLoan.id}">
@@ -1146,6 +1189,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <div class="customer-details">${detailsHtml}</div>
                 </div>
                 <div class="customer-actions">
+                    ${monthlyBadge}
                     ${loanCountBadge}
                     <span class="view-details-prompt" data-id="${latestLoan.id}">View Details</span>
                 </div>
@@ -1192,6 +1236,7 @@ document.addEventListener("DOMContentLoaded", () => {
             amount: nextDueInstallment.pendingAmount,
             date: nextDueInstallment.dueDate,
             customerId: customer.id,
+            isMonthly: customer.loanTermType === "monthly",
           };
           if (dueDate < today) overdue.push(entry);
           else upcoming.push(entry);
@@ -1208,9 +1253,17 @@ document.addEventListener("DOMContentLoaded", () => {
         .slice(0, 5)
         .map((item) => {
           const formattedDate = formatForDisplay(item.date);
-          return `<li class="activity-item" data-id="${item.customerId}"><div class="activity-info"><span class="activity-name">${item.name}</span><span class="activity-date">${formattedDate}</span></div><div class="activity-value"><span class="activity-amount">${formatCurrency(
-              item.amount
-            )}</span></div></li>`;
+          // NEW: Add monthly badge
+          const monthlyBadge = item.isMonthly
+            ? '<span class="finance-status-badge monthly-loan" style="font-size: 0.7rem; margin-left: 8px;">Monthly</span>'
+            : "";
+          return `<li class="activity-item" data-id="${
+            item.customerId
+          }"><div class="activity-info"><span class="activity-name">${
+            item.name
+          }${monthlyBadge}</span><span class="activity-date">${formattedDate}</span></div><div class="activity-value"><span class="activity-amount">${formatCurrency(
+            item.amount
+          )}</span></div></li>`;
         })
         .join("")}</ul>`;
     };
@@ -1252,13 +1305,17 @@ document.addEventListener("DOMContentLoaded", () => {
             `<div class="custom-option ${
               loan.id === customerId ? "selected" : ""
             }" data-value="${loan.id}">
-                Finance ${loan.financeCount || 1}
+                Finance ${loan.financeCount || 1} ${
+              loan.loanTermType === "monthly" ? "(Monthly)" : ""
+            }
             </div>`
         )
         .join("");
       const currentLoan =
         loansToDisplay.find((l) => l.id === customerId) || customer;
-      triggerText.textContent = `Finance ${currentLoan.financeCount || 1}`;
+      triggerText.textContent = `Finance ${currentLoan.financeCount || 1} ${
+        currentLoan.loanTermType === "monthly" ? "(Monthly)" : ""
+      }`;
     } else {
       switcherContainer.classList.add("hidden");
     }
@@ -1277,9 +1334,18 @@ document.addEventListener("DOMContentLoaded", () => {
     const modalBody = getEl("details-modal-body");
     getEl("details-modal-title").textContent = `Details: ${customer.name}`;
     const frequencyBadge = getEl("details-modal-frequency");
-    if (frequencyBadge && customer.loanDetails?.frequency) {
-      frequencyBadge.textContent = customer.loanDetails.frequency;
-      frequencyBadge.className = `loan-frequency-badge frequency-${customer.loanDetails.frequency}`;
+    if (frequencyBadge) {
+      if (customer.loanTermType === "monthly") {
+        frequencyBadge.textContent = "Monthly Loan";
+        frequencyBadge.className =
+          "loan-frequency-badge frequency-monthly-special"; // You can style this
+      } else if (customer.loanDetails?.frequency) {
+        frequencyBadge.textContent = customer.loanDetails.frequency;
+        frequencyBadge.className = `loan-frequency-badge frequency-${customer.loanDetails.frequency}`;
+      } else {
+        frequencyBadge.textContent = "N/A";
+        frequencyBadge.className = "loan-frequency-badge";
+      }
     }
 
     const mopBadge = getEl("details-modal-loan-mop");
@@ -1341,25 +1407,45 @@ document.addEventListener("DOMContentLoaded", () => {
         ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline">${label}</a>`
         : '<span class="value">N/A</span>';
     const kycDocs = customer.kycDocs || {};
-    const aadharFrontButton = createKycViewButton(kycDocs.aadharUrlFront, "View Front");
-    const aadharBackButton = createKycViewButton(kycDocs.aadharUrlBack, "View Back");
+    const aadharFrontButton = createKycViewButton(
+      kycDocs.aadharUrlFront,
+      "View Front"
+    );
+    const aadharBackButton = createKycViewButton(
+      kycDocs.aadharUrlBack,
+      "View Back"
+    );
     const panButton = createKycViewButton(kycDocs.panUrl);
     const picButton = createKycViewButton(kycDocs.picUrl, "View Photo");
     const bankButton = createKycViewButton(kycDocs.bankDetailsUrl);
-    
+
     // Calculate all loans total for the display
-    const allLoans = [...window.allCustomers.active, ...window.allCustomers.settled]
-      .filter(c => c.name === customer.name && c.loanDetails && c.paymentSchedule);
-    let totalP = 0, totalI = 0, totalPaidAll = 0;
-    allLoans.forEach(c => {
-        const li = c.loanDetails;
-        const interest = calculateTotalInterest(li.principal, li.interestRate, li.loanGivenDate, li.loanEndDate);
-        totalP += Number(li.principal || 0);
-        totalI += Number(interest || 0);
-        totalPaidAll += c.paymentSchedule.reduce((s, p) => s + (p.amountPaid || 0), 0);
+    const allLoans = [
+      ...window.allCustomers.active,
+      ...window.allCustomers.settled,
+    ].filter(
+      (c) =>
+        c.name === customer.name && c.loanDetails && c.paymentSchedule
+    );
+    let totalP = 0,
+      totalI = 0,
+      totalPaidAll = 0;
+    allLoans.forEach((c) => {
+      const li = c.loanDetails;
+      const interest = calculateTotalInterest(
+        li.principal,
+        li.interestRate,
+        li.loanGivenDate,
+        li.loanEndDate
+      );
+      totalP += Number(li.principal || 0);
+      totalI += Number(interest || 0);
+      totalPaidAll += c.paymentSchedule.reduce(
+        (s, p) => s + (p.amountPaid || 0),
+        0
+      );
     });
     const totalOutstandingAll = Math.max(0, totalP + totalI - totalPaidAll);
-
 
     let avatarHtml;
     if (kycDocs.picUrl) {
@@ -1450,9 +1536,16 @@ document.addEventListener("DOMContentLoaded", () => {
         statusClass = "overdue";
         statusText = "OVERDUE";
       }
-      if (inst.status === "Pending") {
+      // NEW: Special status for monthly loan principal
+      if (
+        customer.loanTermType === "monthly" &&
+        inst.status === "Pending"
+      ) {
+        statusText = `PRINCIPAL DUE (${formatCurrency(inst.pendingAmount)} due)`;
+      } else if (inst.status === "Pending") {
         statusText += ` (${formatCurrency(inst.pendingAmount)} due)`;
       }
+
       let actionButtons = "";
       if (
         customer.status === "active" &&
@@ -1460,7 +1553,12 @@ document.addEventListener("DOMContentLoaded", () => {
       ) {
         actionButtons += `<button class="btn btn-success btn-sm record-payment-btn" data-installment="${inst.installment}" data-id="${customer.id}">Pay</button>`;
       }
-      if (customer.status === "active" && inst.amountPaid > 0) {
+      if (
+        customer.status === "active" &&
+        inst.amountPaid > 0 &&
+        customer.loanTermType !== "monthly"
+      ) {
+        // Don't allow edit for monthly loan payments
         actionButtons += `<button class="btn btn-outline btn-sm record-payment-btn" data-installment="${inst.installment}" data-id="${customer.id}">Edit</button>`;
       }
       const displayedDue = dispDate(inst.dueDate);
@@ -1487,6 +1585,33 @@ document.addEventListener("DOMContentLoaded", () => {
       (installment) => parseFloat(installment.amountPaid || 0) > 0
     );
   };
+
+  // Prevent ReferenceError: define field requirement toggler
+  function setLoanDetailFieldsRequired(isRequired) {
+    const ids = [
+      "principal-amount",
+      "interest-rate-modal",
+      "collection-frequency",
+      "first-collection-date",
+      "loan-end-date",
+      "loan-given-date",
+      "loan-mop"
+    ];
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (isRequired) el.setAttribute("required", "required");
+      else el.removeAttribute("required");
+    });
+  }
+  // Expose if needed elsewhere
+  window.setLoanDetailFieldsRequired = setLoanDetailFieldsRequired;
+
+  // Safe text setter to avoid null.textContent TypeError
+  function safeSetText(target, value) {
+    const el = typeof target === "string" ? document.getElementById(target) : target;
+    if (el) el.textContent = value;
+  }
 
   async function settleLoanById(loanId) {
     const customerToSettle = window.allCustomers.active.find(
@@ -1846,6 +1971,63 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (_) {}
   }
 
+  // NEW: Helper function to record payment and update schedule
+  const recordPayment = async (
+    customerId,
+    installmentNum,
+    amountPaidNow,
+    mop
+  ) => {
+    const customer = window.allCustomers.active.find(
+      (c) => c.id === customerId
+    );
+    if (!customer) throw new Error("Customer not found");
+    if (amountPaidNow <= 0) throw new Error("Payment amount must be positive.");
+
+    const updatedSchedule = JSON.parse(
+      JSON.stringify(customer.paymentSchedule)
+    );
+    const instIndex = updatedSchedule.findIndex(
+      (p) => p.installment === installmentNum
+    );
+    if (instIndex === -1) throw new Error("Installment not found");
+
+    const installment = updatedSchedule[instIndex];
+    const prevPaid = Number(installment.amountPaid || 0);
+    const newTotalPaid = Math.max(0, prevPaid + amountPaidNow);
+    const pending = Math.max(
+      0,
+      Number(installment.amountDue) - newTotalPaid
+    );
+
+    installment.amountPaid = newTotalPaid;
+    installment.pendingAmount = pending;
+    installment.paidDate = new Date().toISOString();
+    installment.modeOfPayment = mop || installment.modeOfPayment || "Cash"; // Use new MOP or fallback
+
+    if (pending <= 0.001) {
+      installment.status = "Paid";
+      installment.pendingAmount = 0;
+    } else if (newTotalPaid > 0) {
+      installment.status = "Pending";
+    } else {
+      installment.status = "Due";
+      installment.paidDate = null;
+      installment.modeOfPayment = null;
+    }
+
+    await db
+      .collection("customers")
+      .doc(customerId)
+      .update({ paymentSchedule: updatedSchedule });
+    await logActivity("PAYMENT_RECEIVED", {
+      customerName: customer.name,
+      amount: amountPaidNow,
+    });
+
+    return { customer, installment };
+  };
+
   function initializeEventListeners() {
     getEl("login-form")?.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -1935,6 +2117,122 @@ document.addEventListener("DOMContentLoaded", () => {
       if (target.closest(".modal-close, [data-close-modal]")) {
         target.closest(".modal").classList.remove("show");
       }
+
+      // NEW: Loan Type Selection
+      if (button && button.id === "select-loan-type-normal") {
+        getEl("loan-type-selection").classList.add("hidden");
+        getEl("customer-form").classList.remove("hidden");
+        getEl("loan-term-type").value = "normal";
+
+        // Show all normal fields
+        getEl("collection-frequency-group").style.display = "block";
+        getEl("first-collection-date-group").style.display = "block";
+        getEl("loan-end-date-group").style.display = "block";
+        getEl("installment-preview").classList.remove("hidden");
+
+        setLoanDetailFieldsRequired(true); // Make them required
+      }
+      if (button && button.id === "select-loan-type-monthly") {
+        getEl("loan-type-selection").classList.add("hidden");
+        getEl("customer-form").classList.remove("hidden");
+        getEl("loan-term-type").value = "monthly";
+
+        // Hide fields not needed for monthly loan
+        getEl("collection-frequency-group").style.display = "none";
+        getEl("first-collection-date-group").style.display = "none";
+        getEl("loan-end-date-group").style.display = "none";
+        getEl("installment-preview").classList.add("hidden");
+
+        // Make them not required
+        getEl("collection-frequency").removeAttribute("required");
+        getEl("first-collection-date").removeAttribute("required");
+        getEl("loan-end-date").removeAttribute("required");
+      }
+
+      // NEW: Monthly Payment Modal Buttons
+      if (button && button.id === "pay-interest-only-btn") {
+        const customerId = getEl("payment-customer-id").value;
+        const installmentNum = parseInt(
+          getEl("payment-installment-number").value,
+          10
+        );
+        const customer = window.allCustomers.active.find(
+          (c) => c.id === customerId
+        );
+        const totalInterest = calculateTotalInterest(
+          customer.loanDetails.principal,
+          customer.loanDetails.interestRate,
+          customer.loanDetails.loanGivenDate,
+          customer.loanDetails.loanEndDate
+        );
+
+        toggleButtonLoading(button, true, "Paying...");
+        try {
+          // Use a prompt for MOP, or just default to Cash
+          const mop = "Cash"; // Or prompt("Enter Mode of Payment:", "Cash");
+          if (!mop) return;
+
+          await recordPayment(
+            customerId,
+            installmentNum,
+            totalInterest,
+            mop
+          );
+          showToast(
+            "success",
+            "Interest Paid",
+            "Interest payment recorded."
+          );
+          getEl("payment-modal").classList.remove("show");
+          await loadAndRenderAll();
+          showCustomerDetails(customerId);
+        } catch (e) {
+          showToast("error", "Payment Failed", e.message);
+        } finally {
+          toggleButtonLoading(button, false);
+        }
+      }
+      if (button && button.id === "pay-full-monthly-btn") {
+        const customerId = getEl("payment-customer-id").value;
+        const installmentNum = parseInt(
+          getEl("payment-installment-number").value,
+          10
+        );
+        const customer = window.allCustomers.active.find(
+          (c) => c.id === customerId
+        );
+        const installment = customer.paymentSchedule.find(
+          (p) => p.installment === installmentNum
+        );
+        const outstandingAmount = installment.pendingAmount;
+
+        toggleButtonLoading(button, true, "Paying...");
+        try {
+          const mop = "Cash"; // Or prompt("Enter Mode of Payment:", "Cash");
+          if (!mop) return;
+
+          await recordPayment(
+            customerId,
+            installmentNum,
+            outstandingAmount,
+            mop
+          );
+          showToast(
+            "success",
+            "Full Amount Paid",
+            "Loan will be settled."
+          );
+          getEl("payment-modal").classList.remove("show");
+          // AUTOMATICALLY SETTLE
+          await settleLoanById(customerId);
+          // loadAndRenderAll() is called inside settleLoanById
+        } catch (e) {
+          showToast("error", "Payment Failed", e.message);
+        } finally {
+          toggleButtonLoading(button, false);
+        }
+      }
+
       if (button) {
         if (button.id === "generate-pdf-btn") {
           const customerId = button.dataset.id;
@@ -1963,52 +2261,56 @@ document.addEventListener("DOMContentLoaded", () => {
           getEl("payment-installment-number").value = installmentNum;
 
           const modal = getEl("payment-modal");
-          modal.querySelector(".payment-customer-name").textContent =
-            customer.name;
-          modal.querySelector(".payment-customer-avatar").textContent =
-            customer.name.charAt(0).toUpperCase();
-          getEl("payment-installment-display").textContent = installmentNum;
-          const existingPaid = Number(installment.amountPaid || 0);
-          const computedPending =
-            installment.pendingAmount !== undefined &&
-            installment.pendingAmount !== null
-              ? Number(installment.pendingAmount)
-              : Math.max(0, Number(installment.amountDue) - existingPaid);
-          getEl("payment-due-display").textContent =
-            formatCurrency(computedPending);
+          if (!modal) return; // Guard against missing modal
 
-          const paymentAmountInput = getEl("payment-amount");
-          paymentAmountInput.value = "";
-          paymentAmountInput.setAttribute("max", computedPending);
+          // Previous direct .textContent assignments replaced with safeSetText
+          safeSetText(modal.querySelector(".payment-customer-name"), customer.name);
+          safeSetText(
+            modal.querySelector(".payment-customer-avatar"),
+            customer.name.charAt(0).toUpperCase()
+          );
+          safeSetText("payment-installment-display", String(installmentNum));
 
-          const paymentMopInput = getEl("payment-mop");
-          paymentMopInput.value = installment.modeOfPayment || "";
+          // NEW: Check if Monthly Loan
+          if (customer.loanTermType === "monthly") {
+            // Show monthly payment UI
+            getEl("normal-payment-body").style.display = "none";
+            getEl("normal-payment-footer").classList.add("hidden");
+            getEl("monthly-payment-body").style.display = "block";
+            getEl("monthly-payment-footer").classList.remove("hidden");
 
-          const updatePendingDisplay = () => {
-            const payNow = parseFloat(paymentAmountInput.value) || 0;
-            const pendingAmount = Math.max(0, computedPending - payNow);
-            const pendingContainer = modal.querySelector(
-              ".payment-pending-display"
+            const totalInterest = calculateTotalInterest(
+              customer.loanDetails.principal,
+              customer.loanDetails.interestRate,
+              customer.loanDetails.loanGivenDate,
+              customer.loanDetails.loanEndDate
             );
-            if (pendingAmount > 0.001) {
-              modal.querySelector(".payment-pending-value").textContent =
-                formatCurrency(pendingAmount);
-              pendingContainer.style.display = "block";
+            const principal = customer.loanDetails.principal;
+            const outstanding = installment.pendingAmount;
+
+            safeSetText("monthly-payment-principal", formatCurrency(principal));
+            safeSetText("monthly-payment-interest", formatCurrency(totalInterest));
+            safeSetText("payment-due-display", formatCurrency(outstanding));
+
+            // Guard interest button subtext
+            if (installment.status === "Pending") {
+              const interestBtn = getEl("pay-interest-only-btn");
+              if (interestBtn) {
+                interestBtn.disabled = true;
+                interestBtn.textContent = "Interest Already Paid";
+              }
+              safeSetText("pay-interest-only-btn-subtext", "");
+              safeSetText("pay-full-monthly-btn-subtext", formatCurrency(outstanding));
             } else {
-              pendingContainer.style.display = "none";
+              safeSetText("pay-interest-only-btn-subtext", formatCurrency(totalInterest));
+              safeSetText("pay-full-monthly-btn-subtext", formatCurrency(outstanding));
             }
-          };
+          } else {
+            // Normal payment branch
+            // ...existing code...
+            safeSetText("payment-due-display", formatCurrency(computedPending));
+          }
 
-          paymentAmountInput.oninput = updatePendingDisplay;
-
-          const payFullBtn = getEl("pay-full-btn");
-          payFullBtn.onclick = () => {
-            paymentAmountInput.value = computedPending;
-            updatePendingDisplay();
-            paymentAmountInput.focus();
-          };
-
-          updatePendingDisplay();
           modal.classList.add("show");
         } else if (button.classList.contains("delete-activity-btn")) {
           const activityId = button.dataset.id;
@@ -2145,6 +2447,8 @@ document.addEventListener("DOMContentLoaded", () => {
           if (window.toggleDarkMode) window.toggleDarkMode();
         } else if (button.id === "main-add-customer-btn") {
           getEl("customer-form").reset();
+          getEl("customer-form").classList.add("hidden");
+          getEl("loan-type-selection").classList.remove("hidden"); // Show loan type selection
           getEl("customer-id").value = "";
           getEl("customer-form-modal-title").textContent = "Add New Customer";
           const todayStr = formatForInput({ id: "any" }, new Date());
@@ -2176,8 +2480,13 @@ document.addEventListener("DOMContentLoaded", () => {
           ].find((c) => c.id === button.dataset.id);
           if (!customer) return;
 
+          // HIDE loan type selection
+          getEl("loan-type-selection").classList.add("hidden");
+          getEl("customer-form").classList.remove("hidden");
+
           getEl("customer-form").reset();
           getEl("customer-id").value = customer.id;
+          getEl("loan-term-type").value = customer.loanTermType || "normal";
 
           // Personal fields
           getEl("customer-name").value = customer.name;
@@ -2188,31 +2497,58 @@ document.addEventListener("DOMContentLoaded", () => {
           getEl("customer-address").value = customer.address || "";
 
           getEl("customer-aadhar-number").value = customer.aadharNumber || "";
-          getEl("customer-pan-number").value = (customer.panNumber || "").toUpperCase();
+          getEl("customer-pan-number").value =
+            (customer.panNumber || "").toUpperCase();
           getEl("customer-bank-name").value = customer.bankName || "";
-          getEl("customer-account-number").value = customer.accountNumber || "";
+          getEl("customer-account-number").value =
+            customer.accountNumber || "";
           getEl("customer-ifsc").value = customer.ifsc || "";
 
           // Mode of payment default
-          getEl("loan-mop").value = customer.loanDetails?.modeOfPayment || "Cash";
+          getEl("loan-mop").value =
+            customer.loanDetails?.modeOfPayment || "Cash";
 
           // Check if loan details are editable (no installment paid)
           const loanEditable = canEditLoanDetailsForCustomer(customer);
+
+          // NEW: Check loanTermType
+          if (customer.loanTermType === "monthly") {
+            // Hide fields not needed for monthly loan
+            getEl("collection-frequency-group").style.display = "none";
+            getEl("first-collection-date-group").style.display = "none";
+            getEl("loan-end-date-group").style.display = "none";
+            getEl("installment-preview").classList.add("hidden");
+            // Make them not required
+            getEl("collection-frequency").removeAttribute("required");
+            getEl("first-collection-date").removeAttribute("required");
+            getEl("loan-end-date").removeAttribute("required");
+          } else {
+            // Show all normal fields
+            getEl("collection-frequency-group").style.display = "block";
+            getEl("first-collection-date-group").style.display = "block";
+            getEl("loan-end-date-group").style.display = "block";
+            getEl("installment-preview").classList.remove("hidden");
+            setLoanDetailFieldsRequired(true);
+          }
 
           // Show or hide loan detail fields based on editability
           if (loanEditable && customer.loanDetails) {
             // Show and populate loan detail fields
             getEl("loan-details-fields").style.display = "block";
-            if (typeof setLoanDetailFieldsRequired === "function")
-              setLoanDetailFieldsRequired(true);
 
             // Populate loan details fields
-            getEl("principal-amount").value = customer.loanDetails.principal || "";
-            getEl("interest-rate-modal").value = customer.loanDetails.interestRate || "";
-            getEl("collection-frequency").value = customer.loanDetails.frequency || "monthly";
-            getEl("first-collection-date").value = customer.loanDetails.firstCollectionDate || "";
-            getEl("loan-end-date").value = customer.loanDetails.loanEndDate || "";
-            getEl("loan-given-date").value = customer.loanDetails.loanGivenDate || "";
+            getEl("principal-amount").value =
+              customer.loanDetails.principal || "";
+            getEl("interest-rate-modal").value =
+              customer.loanDetails.interestRate || "";
+            getEl("collection-frequency").value =
+              customer.loanDetails.frequency || "monthly";
+            getEl("first-collection-date").value =
+              customer.loanDetails.firstCollectionDate || "";
+            getEl("loan-end-date").value =
+              customer.loanDetails.loanEndDate || "";
+            getEl("loan-given-date").value =
+              customer.loanDetails.loanGivenDate || "";
           } else {
             // Hide loan detail fields if not editable
             getEl("loan-details-fields").style.display = "none";
@@ -2240,6 +2576,18 @@ document.addEventListener("DOMContentLoaded", () => {
             (c) => c.id === currentLoanId
           );
           if (!currentCustomer) return;
+
+          // NEW: Don't show modal for monthly loan
+          if (currentCustomer.loanTermType === "monthly") {
+            showConfirmation(
+              `Settle Loan?`,
+              `This will move this Monthly Loan to the 'Settled' list. Are you sure?`,
+              () => {
+                settleLoanById(currentLoanId);
+              }
+            );
+            return;
+          }
 
           const allActiveLoansForCustomer = window.allCustomers.active.filter(
             (c) => c.name === currentCustomer.name
@@ -2546,15 +2894,14 @@ document.addEventListener("DOMContentLoaded", () => {
           };
 
           toggleButtonLoading(saveBtn, true, "Uploading Files...");
-          const [aadharUrlFront, aadharUrlBack, panUrl, picUrl, bankDetailsUrl] = await Promise.all(
-            [
+          const [aadharUrlFront, aadharUrlBack, panUrl, picUrl, bankDetailsUrl] =
+            await Promise.all([
               uploadFile("customer-aadhar-file-front", "aadhar-front"),
               uploadFile("customer-aadhar-file-back", "aadhar-back"),
               uploadFile("customer-pan-file", "pan"),
               uploadFile("customer-pic-file", "picture"),
               uploadFile("customer-bank-file", "bank"),
-            ]
-          );
+            ]);
 
           customerData.kycDocs = {
             ...(aadharUrlFront && { aadharUrlFront }),
@@ -2571,7 +2918,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 delete updatePayload.kycDocs[key];
               }
             });
-            
+
             const finalUpdate = {
               name: updatePayload.name,
               phone: updatePayload.phone,
@@ -2580,18 +2927,23 @@ document.addEventListener("DOMContentLoaded", () => {
               address: updatePayload.address,
               whatsapp: updatePayload.whatsapp,
               aadharNumber: getEl("customer-aadhar-number").value.trim(),
-              panNumber: getEl("customer-pan-number").value.trim().toUpperCase(),
+              panNumber: getEl("customer-pan-number")
+                .value.trim()
+                .toUpperCase(),
               bankName: getEl("customer-bank-name")?.value || "",
               accountNumber: getEl("customer-account-number")?.value || "",
               ifsc: getEl("customer-ifsc")?.value || "",
             };
 
             // File uploads
-            if (aadharUrlFront) finalUpdate["kycDocs.aadharUrlFront"] = aadharUrlFront;
-            if (aadharUrlBack) finalUpdate["kycDocs.aadharUrlBack"] = aadharUrlBack;
+            if (aadharUrlFront)
+              finalUpdate["kycDocs.aadharUrlFront"] = aadharUrlFront;
+            if (aadharUrlBack)
+              finalUpdate["kycDocs.aadharUrlBack"] = aadharUrlBack;
             if (panUrl) finalUpdate["kycDocs.panUrl"] = panUrl;
             if (picUrl) finalUpdate["kycDocs.picUrl"] = picUrl;
-            if (bankDetailsUrl) finalUpdate["kycDocs.bankDetailsUrl"] = bankDetailsUrl;
+            if (bankDetailsUrl)
+              finalUpdate["kycDocs.bankDetailsUrl"] = bankDetailsUrl;
 
             // Always update mode of payment
             finalUpdate["loanDetails.modeOfPayment"] = getEl("loan-mop").value;
@@ -2602,55 +2954,83 @@ document.addEventListener("DOMContentLoaded", () => {
             const canEditLoan = canEditLoanDetailsForCustomer(existingData);
 
             // Only include loan detail updates if they are editable
-            if (canEditLoan && existingData && existingData.loanDetails && existingData.paymentSchedule) {
+            if (
+              canEditLoan &&
+              existingData &&
+              existingData.loanDetails &&
+              existingData.paymentSchedule &&
+              existingData.loanTermType !== "monthly" // Don't allow edits for monthly loan details
+            ) {
               // Get all the updated loan details
-              const updatedPrincipal = parseFloat(getEl("principal-amount")?.value);
-              const updatedRate = parseFloat(getEl("interest-rate-modal")?.value);
+              const updatedPrincipal = parseFloat(
+                getEl("principal-amount")?.value
+              );
+              const updatedRate = parseFloat(
+                getEl("interest-rate-modal")?.value
+              );
               const updatedFrequency = getEl("collection-frequency")?.value;
               const updatedFirstDate = getEl("first-collection-date")?.value;
               const updatedEndDate = getEl("loan-end-date")?.value;
               const updatedLoanGivenDate = getEl("loan-given-date")?.value;
-              
+
               // Check if we have all values needed to recalculate schedule
-              if (!isNaN(updatedPrincipal) && !isNaN(updatedRate) && 
-                  updatedFrequency && updatedFirstDate && updatedEndDate && updatedLoanGivenDate) {
-                
+              if (
+                !isNaN(updatedPrincipal) &&
+                !isNaN(updatedRate) &&
+                updatedFrequency &&
+                updatedFirstDate &&
+                updatedEndDate &&
+                updatedLoanGivenDate
+              ) {
                 // Calculate new installments based on updated date range and frequency
-                const newNBase = calculateInstallments(updatedFirstDate, updatedEndDate, updatedFrequency);
-                
+                const newNBase = calculateInstallments(
+                  updatedFirstDate,
+                  updatedEndDate,
+                  updatedFrequency
+                );
+
                 // Calculate new total repayable amount
                 const newTotalInterest = calculateTotalInterest(
-                  updatedPrincipal, 
-                  updatedRate, 
-                  updatedLoanGivenDate, 
+                  updatedPrincipal,
+                  updatedRate,
+                  updatedLoanGivenDate,
                   updatedEndDate
                 );
                 const newTotalRepayable = updatedPrincipal + newTotalInterest;
-                
+
                 // Get the installment amount (either custom or standard)
                 let newSchedule;
                 const customAmtInput = getEl("custom-installment-amount");
                 let chosenN = newNBase;
-                
+
                 if (customAmtInput && customAmtInput.value) {
-                  const minInstallment = +(newTotalRepayable / newNBase).toFixed(2);
+                  const minInstallment = +(
+                    newTotalRepayable / newNBase
+                  ).toFixed(2);
                   let chosenAmt = parseFloat(customAmtInput.value);
-                  if (!chosenAmt || isNaN(chosenAmt) || chosenAmt < minInstallment) {
+                  if (
+                    !chosenAmt ||
+                    isNaN(chosenAmt) ||
+                    chosenAmt < minInstallment
+                  ) {
                     chosenAmt = minInstallment;
                   }
-                  chosenN = Math.max(1, Math.ceil(newTotalRepayable / chosenAmt));
+                  chosenN = Math.max(
+                    1,
+                    Math.ceil(newTotalRepayable / chosenAmt)
+                  );
                   newSchedule = generateScheduleWithInstallmentAmount(
-                    +newTotalRepayable.toFixed(2),
+                    +totalRepayable.toFixed(2),
                     +chosenAmt.toFixed(2)
                   );
                 } else {
                   // Use standard equal installments
                   newSchedule = generateSimpleInterestSchedule(
-                    +newTotalRepayable.toFixed(2), 
+                    +totalRepayable.toFixed(2),
                     newNBase
                   );
                 }
-                
+
                 // Assign due dates to the new schedule
                 let currentDate = parseDateFlexible(updatedFirstDate);
                 newSchedule.forEach((inst, index) => {
@@ -2665,21 +3045,26 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                   }
                   const yyyy = currentDate.getFullYear();
-                  const mm = String(currentDate.getMonth() + 1).padStart(2, "0");
+                  const mm = String(currentDate.getMonth() + 1).padStart(
+                    2,
+                    "0"
+                  );
                   const dd = String(currentDate.getDate()).padStart(2, "0");
                   inst.dueDate = `${yyyy}-${mm}-${dd}`;
                 });
-                
+
                 // Update all loan details and the payment schedule
                 finalUpdate["loanDetails.principal"] = updatedPrincipal;
                 finalUpdate["loanDetails.interestRate"] = updatedRate;
                 finalUpdate["loanDetails.frequency"] = updatedFrequency;
-                finalUpdate["loanDetails.firstCollectionDate"] = updatedFirstDate;
+                finalUpdate["loanDetails.firstCollectionDate"] =
+                  updatedFirstDate;
                 finalUpdate["loanDetails.loanEndDate"] = updatedEndDate;
-                finalUpdate["loanDetails.loanGivenDate"] = updatedLoanGivenDate;
+                finalUpdate["loanDetails.loanGivenDate"] =
+                  updatedLoanGivenDate;
                 finalUpdate["loanDetails.installments"] = chosenN;
                 finalUpdate["paymentSchedule"] = newSchedule;
-                
+
                 // Update hidden fields if they exist
                 const instEl = getEl("chosen-n-installments");
                 if (instEl && instEl.value) {
@@ -2690,17 +3075,26 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
               } else {
                 // Individual updates if we don't have enough data for full recalculation
-                if (!isNaN(updatedPrincipal)) finalUpdate["loanDetails.principal"] = updatedPrincipal;
-                if (!isNaN(updatedRate)) finalUpdate["loanDetails.interestRate"] = updatedRate;
-                if (updatedFrequency) finalUpdate["loanDetails.frequency"] = updatedFrequency;
-                if (updatedFirstDate) finalUpdate["loanDetails.firstCollectionDate"] = updatedFirstDate;
-                if (updatedEndDate) finalUpdate["loanDetails.loanEndDate"] = updatedEndDate;
-                if (updatedLoanGivenDate) finalUpdate["loanDetails.loanGivenDate"] = updatedLoanGivenDate;
-                
+                if (!isNaN(updatedPrincipal))
+                  finalUpdate["loanDetails.principal"] = updatedPrincipal;
+                if (!isNaN(updatedRate))
+                  finalUpdate["loanDetails.interestRate"] = updatedRate;
+                if (updatedFrequency)
+                  finalUpdate["loanDetails.frequency"] = updatedFrequency;
+                if (updatedFirstDate)
+                  finalUpdate["loanDetails.firstCollectionDate"] =
+                    updatedFirstDate;
+                if (updatedEndDate)
+                  finalUpdate["loanDetails.loanEndDate"] = updatedEndDate;
+                if (updatedLoanGivenDate)
+                  finalUpdate["loanDetails.loanGivenDate"] =
+                    updatedLoanGivenDate;
+
                 const instEl = getEl("chosen-n-installments");
                 if (instEl && instEl.value) {
                   const instNum = parseInt(instEl.value, 10);
-                  if (!isNaN(instNum)) finalUpdate["loanDetails.installments"] = instNum;
+                  if (!isNaN(instNum))
+                    finalUpdate["loanDetails.installments"] = instNum;
                 }
               }
             }
@@ -2719,12 +3113,14 @@ document.addEventListener("DOMContentLoaded", () => {
               showCustomerDetails(reopenAfterSaveId);
             }
           } else {
+            // NEW CUSTOMER
             const customerName = getEl("customer-name").value.trim();
             const existingCustomer = [
               ...window.allCustomers.active,
               ...window.allCustomers.settled,
             ].find(
-              (c) => c.name.trim().toLowerCase() === customerName.toLowerCase()
+              (c) =>
+                c.name.trim().toLowerCase() === customerName.toLowerCase()
             );
 
             if (existingCustomer) {
@@ -2737,84 +3133,142 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const p = parseFloat(getEl("principal-amount").value);
             const r = parseFloat(getEl("interest-rate-modal").value);
-            const freq = getEl("collection-frequency").value;
-            const firstDate = getEl("first-collection-date").value;
-            const endDate = getEl("loan-end-date").value;
+            const loanTermType = getEl("loan-term-type").value;
+            customerData.loanTermType = loanTermType;
 
-            const nBase = calculateInstallments(firstDate, endDate, freq);
-
-            if (isNaN(p) || isNaN(r) || isNaN(nBase) || !firstDate)
-              throw new Error("Please fill all loan detail fields correctly.");
-
-            const loanGivenDate = getEl("loan-given-date")?.value || new Date();
+            const loanGivenDate =
+              getEl("loan-given-date")?.value || new Date();
             const lgdDate =
               typeof loanGivenDate === "string"
                 ? parseDateFlexible(loanGivenDate)
                 : loanGivenDate;
             const lgdStr = formatForInput({ id: "any" }, lgdDate);
 
-            const totalRepayable =
-              p + calculateTotalInterest(p, r, lgdStr, endDate);
+            if (loanTermType === "monthly") {
+              // --- MONTHLY LOAN LOGIC ---
+              const endDate = addMonthsPreserveAnchor(lgdDate, 1);
+              const endDateStr = formatForInput({ id: "any" }, endDate);
+              const firstDateStr = endDateStr; // Only one payment, at the end
 
-            const customAmtInput = getEl("custom-installment-amount");
-            let chosenN = nBase;
-            let chosenEndDate = endDate;
-            let schedule;
-            if (customAmtInput) {
-              const minInstallment = +(totalRepayable / nBase).toFixed(2);
-              let chosenAmt = parseFloat(customAmtInput.value);
-              if (!chosenAmt || isNaN(chosenAmt) || chosenAmt < minInstallment)
-                chosenAmt = minInstallment;
-              chosenN = Math.max(1, Math.ceil(totalRepayable / chosenAmt));
-              chosenEndDate = computeEndDateFromInstallments(
-                firstDate,
-                chosenN,
-                freq
+              const totalInterest = calculateTotalInterest(
+                p,
+                r,
+                lgdStr,
+                endDateStr
               );
-              schedule = generateScheduleWithInstallmentAmount(
-                +totalRepayable.toFixed(2),
-                +chosenAmt.toFixed(2)
-              );
-            }
+              const totalRepayable = p + totalInterest;
 
-            customerData.loanDetails = {
-              principal: p,
-              interestRate: r,
-              installments: chosenN,
-              frequency: freq,
-              loanGivenDate: lgdStr,
-              firstCollectionDate: firstDate,
-              loanEndDate: endDate,
-              type: "simple_interest",
-              modeOfPayment: getEl("loan-mop").value,
-            };
+              customerData.loanDetails = {
+                principal: p,
+                interestRate: r,
+                installments: 1,
+                frequency: "monthly", // Store this for consistency, though UI is hidden
+                loanGivenDate: lgdStr,
+                firstCollectionDate: firstDateStr,
+                loanEndDate: endDateStr,
+                type: "simple_interest", // Keep this type
+                modeOfPayment: getEl("loan-mop").value,
+              };
 
-            let paymentSchedule = schedule
-              ? schedule
-              : generateSimpleInterestSchedule(
-                  +totalRepayable.toFixed(2),
-                  nBase
+              const yyyy = endDate.getFullYear();
+              const mm = String(endDate.getMonth() + 1).padStart(2, "0");
+              const dd = String(endDate.getDate()).padStart(2, "0");
+
+              customerData.paymentSchedule = [
+                {
+                  installment: 1,
+                  amountDue: +totalRepayable.toFixed(2),
+                  amountPaid: 0,
+                  pendingAmount: +totalRepayable.toFixed(2),
+                  status: "Due",
+                  paidDate: null,
+                  modeOfPayment: null,
+                  dueDate: `${yyyy}-${mm}-${dd}`,
+                },
+              ];
+            } else {
+              // --- NORMAL LOAN LOGIC ---
+              const freq = getEl("collection-frequency").value;
+              const firstDate = getEl("first-collection-date").value;
+              const endDate = getEl("loan-end-date").value;
+
+              const nBase = calculateInstallments(firstDate, endDate, freq);
+
+              if (isNaN(p) || isNaN(r) || isNaN(nBase) || !firstDate)
+                throw new Error(
+                  "Please fill all loan detail fields correctly."
                 );
 
-            let currentDate = parseDateFlexible(firstDate);
-            paymentSchedule.forEach((inst, index) => {
-              if (index > 0) {
-                if (freq === "daily") {
-                  currentDate.setDate(currentDate.getDate() + 1);
-                } else if (freq === "weekly") {
-                  currentDate.setDate(currentDate.getDate() + 7);
-                } else if (freq === "monthly") {
-                  const base = parseDateFlexible(firstDate);
-                  currentDate = addMonthsPreserveAnchor(base, index);
-                }
-              }
-              const yyyy = currentDate.getFullYear();
-              const mm = String(currentDate.getMonth() + 1).padStart(2, "0");
-              const dd = String(currentDate.getDate()).padStart(2, "0");
-              inst.dueDate = `${yyyy}-${mm}-${dd}`;
-            });
+              const totalRepayable =
+                p + calculateTotalInterest(p, r, lgdStr, endDate);
 
-            customerData.paymentSchedule = paymentSchedule;
+              const customAmtInput = getEl("custom-installment-amount");
+              let chosenN = nBase;
+              let chosenEndDate = endDate;
+              let schedule;
+              if (customAmtInput) {
+                const minInstallment = +(totalRepayable / nBase).toFixed(2);
+                let chosenAmt = parseFloat(customAmtInput.value);
+                if (
+                  !chosenAmt ||
+                  isNaN(chosenAmt) ||
+                  chosenAmt < minInstallment
+                )
+                  chosenAmt = minInstallment;
+                chosenN = Math.max(1, Math.ceil(totalRepayable / chosenAmt));
+                chosenEndDate = computeEndDateFromInstallments(
+                  firstDate,
+                  chosenN,
+                  freq
+                );
+                schedule = generateScheduleWithInstallmentAmount(
+                  +totalRepayable.toFixed(2),
+                  +chosenAmt.toFixed(2)
+                );
+              }
+
+              customerData.loanDetails = {
+                principal: p,
+                interestRate: r,
+                installments: chosenN,
+                frequency: freq,
+                loanGivenDate: lgdStr,
+                firstCollectionDate: firstDate,
+                loanEndDate: endDate,
+                type: "simple_interest",
+                modeOfPayment: getEl("loan-mop").value,
+              };
+
+              let paymentSchedule = schedule
+                ? schedule
+                : generateSimpleInterestSchedule(
+                    +totalRepayable.toFixed(2),
+                    nBase
+                  );
+
+              let currentDate = parseDateFlexible(firstDate);
+              paymentSchedule.forEach((inst, index) => {
+                if (index > 0) {
+                  if (freq === "daily") {
+                    currentDate.setDate(currentDate.getDate() + 1);
+                  } else if (freq === "weekly") {
+                    currentDate.setDate(currentDate.getDate() + 7);
+                  } else if (freq === "monthly") {
+                    const base = parseDateFlexible(firstDate);
+                    currentDate = addMonthsPreserveAnchor(base, index);
+                  }
+                }
+                const yyyy = currentDate.getFullYear();
+                const mm = String(currentDate.getMonth() + 1).padStart(
+                  2,
+                  "0"
+                );
+                const dd = String(currentDate.getDate()).padStart(2, "0");
+                inst.dueDate = `${yyyy}-${mm}-${dd}`;
+              });
+
+              customerData.paymentSchedule = paymentSchedule;
+            }
 
             customerData.owner = currentUser.uid;
             customerData.createdAt =
@@ -2855,55 +3309,18 @@ document.addEventListener("DOMContentLoaded", () => {
             10
           );
           const amountPaidNow = parseFloat(getEl("payment-amount").value) || 0;
-
           const mop = getEl("payment-mop").value;
+
           if (!mop) {
             throw new Error("Please select a mode of payment.");
           }
 
-          const customer = window.allCustomers.active.find(
-            (c) => c.id === customerId
+          const { customer, installment } = await recordPayment(
+            customerId,
+            installmentNum,
+            amountPaidNow,
+            mop
           );
-          if (!customer) throw new Error("Customer not found");
-
-          const updatedSchedule = JSON.parse(
-            JSON.stringify(customer.paymentSchedule)
-          );
-          const instIndex = updatedSchedule.findIndex(
-            (p) => p.installment === installmentNum
-          );
-
-          const installment = updatedSchedule[instIndex];
-          const prevPaid = Number(installment.amountPaid || 0);
-          const newTotalPaid = Math.max(0, prevPaid + amountPaidNow);
-          const pending = Math.max(
-            0,
-            Number(installment.amountDue) - newTotalPaid
-          );
-          installment.amountPaid = newTotalPaid;
-          installment.pendingAmount = pending;
-          installment.paidDate = new Date().toISOString();
-          installment.modeOfPayment = mop;
-
-          if (pending <= 0.001) {
-            installment.status = "Paid";
-            installment.pendingAmount = 0;
-          } else if (newTotalPaid > 0) {
-            installment.status = "Pending";
-          } else {
-            installment.status = "Due";
-            installment.paidDate = null;
-            installment.modeOfPayment = null;
-          }
-
-          await db
-            .collection("customers")
-            .doc(customerId)
-            .update({ paymentSchedule: updatedSchedule });
-          await logActivity("PAYMENT_RECEIVED", {
-            customerName: customer.name,
-            amount: amountPaidNow,
-          });
 
           showToast(
             "success",
@@ -2989,7 +3406,11 @@ document.addEventListener("DOMContentLoaded", () => {
           if (customAmtInput) {
             const minInstallment = +(totalRepayable / nBase).toFixed(2);
             let chosenAmt = parseFloat(customAmtInput.value);
-            if (!chosenAmt || isNaN(chosenAmt) || chosenAmt < minInstallment)
+            if (
+              !chosenAmt ||
+              isNaN(chosenAmt) ||
+              chosenAmt < minInstallment
+            )
               chosenAmt = minInstallment;
             chosenN = Math.max(1, Math.ceil(totalRepayable / chosenAmt));
             chosenEndDate = computeEndDateFromInstallments(
@@ -3017,6 +3438,7 @@ document.addEventListener("DOMContentLoaded", () => {
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             status: "active",
             financeCount: maxFinanceCount + 1,
+            loanTermType: "normal", // New loans for existing customers are "normal"
             loanDetails: {
               principal: p,
               interestRate: r,
@@ -3050,7 +3472,7 @@ document.addEventListener("DOMContentLoaded", () => {
           let currentDate = parseDateFlexible(firstDate);
           paymentSchedule.forEach((inst, index) => {
             if (index > 0) {
-              if (freq === "daily") {
+              if (freq ==="daily") {
                 currentDate.setDate(currentDate.getDate() + 1);
               } else if (freq === "weekly") {
                 currentDate.setDate(currentDate.getDate() + 7);
@@ -3060,13 +3482,17 @@ document.addEventListener("DOMContentLoaded", () => {
               }
             }
             const yyyy = currentDate.getFullYear();
-            const mm = String(currentDate.getMonth() + 1).padStart(2, "0");
+            const mm = String(currentDate.getMonth() + 1).padStart(
+              2,
+              "0"
+            );
             const dd = String(currentDate.getDate()).padStart(2, "0");
             inst.dueDate = `${yyyy}-${mm}-${dd}`;
           });
+
           newLoanData.paymentSchedule = paymentSchedule;
 
-          await db.collection("customers").add(newLoanData);
+          const docRef = await db.collection("customers").add(newLoanData);
           await logActivity("NEW_LOAN", {
             customerName: newLoanData.name,
             amount: p,
@@ -3074,184 +3500,153 @@ document.addEventListener("DOMContentLoaded", () => {
           });
           showToast(
             "success",
-            "Loan Added",
-            `New Finance #${newLoanData.financeCount} created for ${newLoanData.name}.`
+            "New Loan Added",
+            "New loan account created successfully."
           );
 
           getEl("new-loan-modal").classList.remove("show");
-          getEl("customer-details-modal").classList.remove("show");
-          await loadAndRenderAll(); // Wait before showing details
-          // Find the newly added doc ID to show details (might need adjustment if multiple added quickly)
-          const snapshot = await db
-            .collection("customers")
-            .where("owner", "==", currentUser.uid)
-            .where("name", "==", newLoanData.name)
-            .where("financeCount", "==", newLoanData.financeCount)
-            .limit(1)
-            .get();
-          if (!snapshot.empty) {
-            showCustomerDetails(snapshot.docs[0].id);
-          }
-        } catch (error) {
-          showToast("error", "Failed", error.message);
+          await loadAndRenderAll();
+          showCustomerDetails(docRef.id);
+        } catch (e) {
+          showToast("error", "Save Failed", e.message);
         } finally {
           toggleButtonLoading(saveBtn, false);
         }
       } else if (form.id === "change-password-form") {
         const btn = getEl("change-password-btn");
-        toggleButtonLoading(btn, true, "Updating...");
-        const currentPass = getEl("current-password").value;
-        const newPass = getEl("new-password").value;
-        const confirmPass = getEl("confirm-password").value;
-        if (newPass !== confirmPass) {
-          showToast("error", "Mismatch", "New passwords do not match.");
-          toggleButtonLoading(btn, false);
+        const currentPassword = getEl("current-password").value;
+        const newPassword = getEl("new-password").value;
+        const confirmPassword = getEl("confirm-password").value;
+
+        if (newPassword !== confirmPassword) {
+          showToast("error", "Error", "New passwords do not match.");
           return;
         }
-        if (newPass.length < 6) {
+        if (newPassword.length < 6) {
           showToast(
             "error",
-            "Too Weak",
-            "Password should be at least 6 characters long."
+            "Error",
+            "Password must be at least 6 characters long."
           );
-          toggleButtonLoading(btn, false);
           return;
         }
+
+        toggleButtonLoading(btn, true, "Updating...");
         try {
           const user = auth.currentUser;
-          const credential = firebase.auth.EmailAuthProvider.credential(
-            user.email,
-            currentPass
-          );
+          const credential =
+            firebase.auth.EmailAuthProvider.credential(
+              user.email,
+              currentPassword
+                       );
           await user.reauthenticateWithCredential(credential);
-          await user.updatePassword(newPass);
-          showToast("success", "Success", "Password updated successfully.");
+          await user.updatePassword(newPassword);
+          showToast(
+            "success",
+            "Password Updated",
+            "Your password has been changed successfully."
+          );
           form.reset();
         } catch (error) {
-          showToast(
-            "error",
-            "Authentication Failed",
-            "Incorrect current password or other error."
-          );
+          showToast("error", "Update Failed", error.message);
         } finally {
           toggleButtonLoading(btn, false);
         }
       }
     });
 
-    getEl("collection-frequency").addEventListener(
-      "change",
-      setAutomaticFirstDate
-    );
-    const givenEl = getEl("loan-given-date");
-    if (givenEl) {
-      givenEl.addEventListener("change", setAutomaticFirstDate);
-    }
-    getEl("new-loan-frequency").addEventListener(
-      "change",
-      setAutomaticNewLoanFirstDate
-    );
-    const newGivenEl = getEl("new-loan-given-date");
-    if (newGivenEl) {
-      newGivenEl.addEventListener("change", setAutomaticNewLoanFirstDate);
-    }
-
-    const loanDetailFields = [
-      "principal-amount",
-      "interest-rate-modal",
-      "collection-frequency",
-      "first-collection-date",
-      "loan-end-date",
-    ];
-    function setLoanDetailFieldsRequired(required) {
-      const ids = [...loanDetailFields, "loan-given-date", "loan-mop"];
-      ids.forEach((id) => {
-        const el = getEl(id);
-        if (!el) return;
-        if (required) el.setAttribute("required", "required");
-        else el.removeAttribute("required");
-      });
-    }
-    loanDetailFields.forEach((id) => {
-      const element = getEl(id);
-      if (element) {
-        element.addEventListener("input", updateInstallmentPreview);
-        element.addEventListener("change", updateInstallmentPreview);
-      }
-    });
-
-    const newLoanDetailFields = [
-      "new-loan-principal",
-      "new-loan-interest-rate",
-      "new-loan-frequency",
-      "new-loan-start-date",
-      "new-loan-end-date",
-    ];
-    newLoanDetailFields.forEach((id) => {
-      const element = getEl(id);
-      if (element) {
-        element.addEventListener("input", updateNewLoanInstallmentPreview);
-        element.addEventListener("change", updateNewLoanInstallmentPreview);
-      }
-    });
-
     document.body.addEventListener("change", (e) => {
-      if (e.target.id === "dark-mode-toggle") {
-        if (window.toggleDarkMode) window.toggleDarkMode();
-      } else if (e.target.id === "import-backup-input") {
-        const fileName = e.target.files[0]
-          ? e.target.files[0].name
-          : "No file chosen";
-        getEl("file-name-display").textContent = fileName;
-      } else if (e.target.classList.contains("file-input")) {
-        const fileInput = e.target;
-        const label = fileInput.nextElementSibling;
-        const labelSpan = label.querySelector("span");
-        const labelIcon = label.querySelector("i");
-        const file = fileInput.files[0];
+      const el = e.target;
+      if (el.classList.contains("file-input")) {
+        const label = el.nextElementSibling;
+        const span = label.querySelector("span");
+        if (el.files && el.files.length > 0) {
+          const fileName = el.files[0].name;
+          const truncated = truncateMiddle(fileName, 25);
+          span.textContent = truncated;
+          label.title = fileName;
 
-        if (file) {
-          const MAX_FILE_SIZE = 1 * 1024 * 1024;
-          if (file.size > MAX_FILE_SIZE) {
+          // File size check
+          const fileSize = el.files[0].size; // in bytes
+          const maxSize = 1 * 1024 * 1024; // 1 MB
+          if (fileSize > maxSize) {
             showSizeAlert();
-            fileInput.value = "";
-            if (labelSpan) {
-              labelSpan.textContent = "Choose a file...";
-              if (label) label.title = "";
-            }
-            return;
+            el.value = ""; // Clear the file input
+            span.textContent = "Choose a file...";
+            label.title = "";
           }
+        } else {
+          span.textContent = "Choose a file...";
+          label.title = "";
         }
+      }
 
-        const fileName = file ? file.name : "Choose a file...";
-        if (labelSpan) {
-          const labelWidth = label.clientWidth || 0;
-          const iconWidth = (labelIcon && labelIcon.clientWidth) || 0;
-          const gap = 12;
-          const availablePx = Math.max(0, labelWidth - iconWidth - gap - 24);
-          const avgCharPx = 7;
-          const maxChars = Math.max(12, Math.floor(availablePx / avgCharPx));
-          const displayName = file
-            ? truncateMiddle(file.name, maxChars)
-            : fileName;
-          labelSpan.textContent = displayName;
-          if (label) label.title = file ? file.name : "";
+      // Installment calculation triggers
+      if (
+        [
+          "principal-amount",
+          "interest-rate-modal",
+          "collection-frequency",
+          "first-collection-date",
+          "loan-end-date",
+          "loan-given-date",
+        ].includes(el.id)
+      ) {
+        if (getEl("loan-term-type").value === "normal") {
+          updateInstallmentPreview();
         }
-      } else if (e.target.id === "customer-sort-select") {
-        activeSortKey = e.target.value;
-        const searchTerm = getEl("search-customers")?.value.toLowerCase() || "";
-        const filtered = window.allCustomers.active.filter((c) =>
-          c.name.toLowerCase().includes(searchTerm)
-        );
-        renderActiveCustomerList(filtered, activeSortKey);
+      }
+
+      if (el.id === "collection-frequency") {
+        setAutomaticFirstDate();
+      }
+
+      // New loan calculation triggers
+      if (
+        [
+          "new-loan-principal",
+          "new-loan-interest-rate",
+          "new-loan-frequency",
+          "new-loan-start-date",
+          "new-loan-end-date",
+          "new-loan-given-date",
+        ].includes(el.id)
+      ) {
+        updateNewLoanInstallmentPreview();
+      }
+
+      if (el.id === "new-loan-frequency") {
+        setAutomaticNewLoanFirstDate();
+      }
+
+      // Import file display
+      if (el.id === "import-backup-input") {
+        const display = getEl("file-name-display");
+        if (el.files && el.files.length > 0) {
+          display.textContent = el.files[0].name;
+        } else {
+          display.textContent = "No file chosen";
+        }
+      }
+
+      // Dark mode toggle
+      if (el.id === "dark-mode-toggle") {
+        if (window.toggleDarkMode) window.toggleDarkMode();
+      }
+
+      // Customer sort
+      if (el.id === "customer-sort-select") {
+        activeSortKey = el.value;
+        renderActiveCustomerList(window.allCustomers.active, activeSortKey);
       }
     });
 
     document.body.addEventListener("input", (e) => {
-      if (e.target.id === "search-customers") {
-        const term = e.target.value.toLowerCase();
+      const el = e.target;
+      if (el.id === "search-customers") {
+        const searchTerm = el.value.toLowerCase().trim();
         const filtered = window.allCustomers.active.filter((c) =>
-          c.name.toLowerCase().includes(term)
+          c.name.toLowerCase().includes(searchTerm)
         );
         renderActiveCustomerList(filtered, activeSortKey);
       }
