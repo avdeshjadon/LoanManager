@@ -1607,10 +1607,14 @@ const toggleButtonLoading = (btn, isLoading, text = "Loading...") => {
   // Expose if needed elsewhere
   window.setLoanDetailFieldsRequired = setLoanDetailFieldsRequired;
 
-  // Safe text setter to avoid null.textContent TypeError
+  // Safe setters
   function safeSetText(target, value) {
     const el = typeof target === "string" ? document.getElementById(target) : target;
     if (el) el.textContent = value;
+  }
+  function safeSetValue(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.value = value;
   }
 
   async function settleLoanById(loanId) {
@@ -2152,37 +2156,22 @@ const toggleButtonLoading = (btn, isLoading, text = "Loading...") => {
       // NEW: Monthly Payment Modal Buttons
       if (button && button.id === "pay-interest-only-btn") {
         const customerId = getEl("payment-customer-id").value;
-        const installmentNum = parseInt(
-          getEl("payment-installment-number").value,
-          10
-        );
-        const customer = window.allCustomers.active.find(
-          (c) => c.id === customerId
-        );
+        const installmentNum = parseInt(getEl("payment-installment-number").value, 10);
+        const mop = getEl("payment-modal")?.dataset.mop || "Cash";
+        const customer = window.allCustomers.active.find(c => c.id === customerId);
+        if (!customer) return;
         const totalInterest = calculateTotalInterest(
           customer.loanDetails.principal,
           customer.loanDetails.interestRate,
           customer.loanDetails.loanGivenDate,
           customer.loanDetails.loanEndDate
         );
+        console.log("[INTEREST ONLY PAY]", { customerId, installmentNum, totalInterest, mop });
 
         toggleButtonLoading(button, true, "Paying...");
         try {
-          // Use a prompt for MOP, or just default to Cash
-          const mop = "Cash"; // Or prompt("Enter Mode of Payment:", "Cash");
-          if (!mop) return;
-
-          await recordPayment(
-            customerId,
-            installmentNum,
-            totalInterest,
-            mop
-          );
-          showToast(
-            "success",
-            "Interest Paid",
-            "Interest payment recorded."
-          );
+          await recordPayment(customerId, installmentNum, totalInterest, mop);
+          showToast("success", "Interest Paid", "Interest payment recorded.");
           getEl("payment-modal").classList.remove("show");
           await loadAndRenderAll();
           showCustomerDetails(customerId);
@@ -2192,40 +2181,23 @@ const toggleButtonLoading = (btn, isLoading, text = "Loading...") => {
           toggleButtonLoading(button, false);
         }
       }
+
       if (button && button.id === "pay-full-monthly-btn") {
         const customerId = getEl("payment-customer-id").value;
-        const installmentNum = parseInt(
-          getEl("payment-installment-number").value,
-          10
-        );
-        const customer = window.allCustomers.active.find(
-          (c) => c.id === customerId
-        );
-        const installment = customer.paymentSchedule.find(
-          (p) => p.installment === installmentNum
-        );
-        const outstandingAmount = installment.pendingAmount;
+        const installmentNum = parseInt(getEl("payment-installment-number").value, 10);
+        const mop = getEl("payment-modal")?.dataset.mop || "Cash";
+        const customer = window.allCustomers.active.find(c => c.id === customerId);
+        if (!customer) return;
+        const installment = customer.paymentSchedule.find(p => p.installment === installmentNum);
+        const outstandingAmount = installment?.pendingAmount || 0;
+        console.log("[FULL MONTHLY PAY]", { customerId, installmentNum, outstandingAmount, mop });
 
         toggleButtonLoading(button, true, "Paying...");
         try {
-          const mop = "Cash"; // Or prompt("Enter Mode of Payment:", "Cash");
-          if (!mop) return;
-
-          await recordPayment(
-            customerId,
-            installmentNum,
-            outstandingAmount,
-            mop
-          );
-          showToast(
-            "success",
-            "Full Amount Paid",
-            "Loan will be settled."
-          );
+          await recordPayment(customerId, installmentNum, outstandingAmount, mop);
+          showToast("success", "Full Amount Paid", "Loan will be settled.");
           getEl("payment-modal").classList.remove("show");
-          // AUTOMATICALLY SETTLE
           await settleLoanById(customerId);
-          // loadAndRenderAll() is called inside settleLoanById
         } catch (e) {
           showToast("error", "Payment Failed", e.message);
         } finally {
@@ -2249,31 +2221,29 @@ const toggleButtonLoading = (btn, isLoading, text = "Loading...") => {
         } else if (button.classList.contains("record-payment-btn")) {
           const customerId = button.dataset.id;
           const installmentNum = parseInt(button.dataset.installment, 10);
-          const customer = window.allCustomers.active.find(
-            (c) => c.id === customerId
-          );
+          const customer = window.allCustomers.active.find(c => c.id === customerId);
           if (!customer) return;
-          const installment = customer.paymentSchedule.find(
-            (p) => p.installment === installmentNum
-          );
+          const installment = customer.paymentSchedule.find(p => p.installment === installmentNum);
+          if (!installment) return;
+          console.log("[PAY MODAL OPEN]", { customerId, installmentNum, installment });
 
-          getEl("payment-customer-id").value = customerId;
-          getEl("payment-installment-number").value = installmentNum;
+          safeSetValue("payment-customer-id", customerId);
+          safeSetValue("payment-installment-number", installmentNum);
 
           const modal = getEl("payment-modal");
-          if (!modal) return; // Guard against missing modal
+          if (!modal) return;
 
-          // Previous direct .textContent assignments replaced with safeSetText
           safeSetText(modal.querySelector(".payment-customer-name"), customer.name);
-          safeSetText(
-            modal.querySelector(".payment-customer-avatar"),
-            customer.name.charAt(0).toUpperCase()
-          );
+          safeSetText(modal.querySelector(".payment-customer-avatar"), customer.name.charAt(0).toUpperCase());
           safeSetText("payment-installment-display", String(installmentNum));
 
-          // NEW: Check if Monthly Loan
+          // Derive default Mode of Payment
+          const defaultMop = installment.modeOfPayment ||
+            customer.loanDetails?.modeOfPayment ||
+            "Cash";
+
+          // MONTHLY LOAN BRANCH
           if (customer.loanTermType === "monthly") {
-            // Show monthly payment UI
             getEl("normal-payment-body").style.display = "none";
             getEl("normal-payment-footer").classList.add("hidden");
             getEl("monthly-payment-body").style.display = "block";
@@ -2292,7 +2262,9 @@ const toggleButtonLoading = (btn, isLoading, text = "Loading...") => {
             safeSetText("monthly-payment-interest", formatCurrency(totalInterest));
             safeSetText("payment-due-display", formatCurrency(outstanding));
 
-            // Guard interest button subtext
+            // Store current mop for monthly actions
+            modal.dataset.mop = defaultMop;
+
             if (installment.status === "Pending") {
               const interestBtn = getEl("pay-interest-only-btn");
               if (interestBtn) {
@@ -2306,9 +2278,59 @@ const toggleButtonLoading = (btn, isLoading, text = "Loading...") => {
               safeSetText("pay-full-monthly-btn-subtext", formatCurrency(outstanding));
             }
           } else {
-            // Normal payment branch
-            // ...existing code...
+            // NORMAL LOAN BRANCH
+            getEl("normal-payment-body").style.display = "block";
+            getEl("normal-payment-footer").classList.remove("hidden");
+            getEl("monthly-payment-body").style.display = "none";
+            getEl("monthly-payment-footer").classList.add("hidden");
+
+            const existingPaid = Number(installment.amountPaid || 0);
+            const computedPending =
+              installment.pendingAmount !== undefined && installment.pendingAmount !== null
+                ? Number(installment.pendingAmount)
+                : Math.max(0, Number(installment.amountDue) - existingPaid);
+
             safeSetText("payment-due-display", formatCurrency(computedPending));
+
+            const paymentAmountInput = getEl("payment-amount");
+            if (paymentAmountInput) {
+              paymentAmountInput.value = "";
+              paymentAmountInput.setAttribute("max", computedPending);
+            }
+
+            const paymentMopInput = getEl("payment-mop");
+            if (paymentMopInput) {
+              paymentMopInput.value = defaultMop; // Auto-fill MOP
+            }
+
+            const updatePendingDisplay = () => {
+              const payNow = parseFloat(paymentAmountInput?.value || "0") || 0;
+              const pendingAmount = Math.max(0, computedPending - payNow);
+              const pendingContainer = modal.querySelector(".payment-pending-display");
+              if (!pendingContainer) return;
+              if (pendingAmount > 0.001) {
+                safeSetText(pendingContainer.querySelector(".payment-pending-value"), formatCurrency(pendingAmount));
+                pendingContainer.style.display = "block";
+              } else {
+                pendingContainer.style.display = "none";
+              }
+            };
+
+            if (paymentAmountInput) {
+              paymentAmountInput.oninput = updatePendingDisplay;
+            }
+
+            const payFullBtn = getEl("pay-full-btn");
+            if (payFullBtn && paymentAmountInput) {
+              payFullBtn.onclick = () => {
+                paymentAmountInput.value = computedPending;
+                updatePendingDisplay();
+                paymentAmountInput.focus();
+                console.log("[PAY FULL CLICK]", { computedPending });
+              };
+            }
+
+            updatePendingDisplay();
           }
 
           modal.classList.add("show");
@@ -2713,17 +2735,6 @@ const toggleButtonLoading = (btn, isLoading, text = "Loading...") => {
           );
 
           getEl("new-loan-mop").value = "Cash";
-
-          try {
-            const startStr = getEl("new-loan-start-date").value;
-            const endDefault = computeEndDateFromInstallments(
-              startStr,
-              2,
-              freq
-            );
-            const endInput = getEl("new-loan-end-date");
-            if (endInput) endInput.value = endDefault;
-          } catch (_) {}
 
           getEl("new-loan-installment-preview").classList.add("hidden");
           getEl("new-loan-modal").classList.add("show");
@@ -3249,7 +3260,7 @@ const toggleButtonLoading = (btn, isLoading, text = "Loading...") => {
               let currentDate = parseDateFlexible(firstDate);
               paymentSchedule.forEach((inst, index) => {
                 if (index > 0) {
-                  if (freq === "daily") {
+                  if (freq ==="daily") {
                     currentDate.setDate(currentDate.getDate() + 1);
                   } else if (freq === "weekly") {
                     currentDate.setDate(currentDate.getDate() + 7);
@@ -3287,11 +3298,9 @@ const toggleButtonLoading = (btn, isLoading, text = "Loading...") => {
             showToast("success", "Customer Added", "New loan account created.");
 
             // ** FIX IS HERE: Wait for data reload BEFORE showing details **
-            getEl("customer-form-modal").classList.remove("show");
+            getEl("new-loan-modal").classList.remove("show");
             await loadAndRenderAll(); // Wait for the refresh to complete
-            if (reopenAfterSaveId) {
-              showCustomerDetails(reopenAfterSaveId); // Now uses updated data
-            }
+            showCustomerDetails(docRef.id); // Now uses updated data
           }
         } catch (error) {
           console.error("Save/Update failed:", error);
