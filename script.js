@@ -1536,11 +1536,7 @@ const toggleButtonLoading = (btn, isLoading, text = "Loading...") => {
         statusClass = "overdue";
         statusText = "OVERDUE";
       }
-      // NEW: Special status for monthly loan principal
-      if (
-        customer.loanTermType === "monthly" &&
-        inst.status === "Pending"
-      ) {
+      if (customer.loanTermType === "monthly" && inst.status === "Pending") {
         statusText = `PRINCIPAL DUE (${formatCurrency(inst.pendingAmount)} due)`;
       } else if (inst.status === "Pending") {
         statusText += ` (${formatCurrency(inst.pendingAmount)} due)`;
@@ -1553,26 +1549,23 @@ const toggleButtonLoading = (btn, isLoading, text = "Loading...") => {
       ) {
         actionButtons += `<button class="btn btn-success btn-sm record-payment-btn" data-installment="${inst.installment}" data-id="${customer.id}">Pay</button>`;
       }
-      if (
-        customer.status === "active" &&
-        inst.amountPaid > 0 &&
-        customer.loanTermType !== "monthly"
-      ) {
-        // Don't allow edit for monthly loan payments
+      if (customer.status === "active" && inst.amountPaid > 0) {
         actionButtons += `<button class="btn btn-outline btn-sm record-payment-btn" data-installment="${inst.installment}" data-id="${customer.id}">Edit</button>`;
       }
-      const displayedDue = dispDate(inst.dueDate);
+      if (customer.status === "active" && inst.status === "Paid") {
+        actionButtons += `<button class="btn btn-danger btn-sm undo-payment-btn" data-installment="${inst.installment}" data-id="${customer.id}" title="Undo Payment"><i class="fas fa-undo"></i></button>`;
+      }
 
       const paymentMop = inst.amountPaid > 0 ? inst.modeOfPayment || "N/A" : "";
+      const displayedDue = dispDate(inst.dueDate);
 
-      tr.innerHTML = `<td>${
-        inst.installment
-      }</td><td>${displayedDue}</td><td>${formatCurrency(
-        inst.amountDue
-      )}</td><td>${formatCurrency(
-        inst.amountPaid
-      )}</td><td>${paymentMop}</td><td><span class="emi-status status-${statusClass}">${statusText}</span></td><td class="no-pdf">${actionButtons}</td>`;
-
+      tr.innerHTML = `<td>${inst.installment}</td>
+        <td>${displayedDue}</td>
+        <td>${formatCurrency(inst.amountDue)}</td>
+        <td>${formatCurrency(inst.amountPaid)}</td>
+        <td>${paymentMop}</td>
+        <td><span class="emi-status status-${statusClass}">${statusText}</span></td>
+        <td class="no-pdf">${actionButtons}</td>`;
       emiTableBody.appendChild(tr);
     });
   };
@@ -1975,7 +1968,27 @@ const toggleButtonLoading = (btn, isLoading, text = "Loading...") => {
     } catch (_) {}
   }
 
-  // NEW: Helper function to record payment and update schedule
+  // NEW: Undo helper (revert a paid installment)
+  const undoInstallmentPayment = async (customerId, installmentNum) => {
+    const docRef = db.collection("customers").doc(customerId);
+    const snap = await docRef.get();
+    if (!snap.exists) throw new Error("Customer not found.");
+    const data = snap.data();
+    const schedule = (data.paymentSchedule || []).map(inst => ({ ...inst }));
+    const idx = schedule.findIndex(p => p.installment === installmentNum);
+    if (idx === -1) throw new Error("Installment not found.");
+    const inst = schedule[idx];
+    if (inst.status !== "Paid") throw new Error("Only fully paid installments can be undone.");
+    // Revert values (status back to 'Due')
+    inst.amountPaid = 0;
+    inst.pendingAmount = inst.amountDue;
+    inst.status = "Due";
+    inst.paidDate = null;
+    inst.modeOfPayment = null;
+    await docRef.update({ paymentSchedule: schedule });
+    showToast("success", "Reverted", `Installment #${installmentNum} reverted to Unpaid.`);
+  };
+
   const recordPayment = async (
     customerId,
     installmentNum,
@@ -2032,7 +2045,7 @@ const toggleButtonLoading = (btn, isLoading, text = "Loading...") => {
     return { customer, installment };
   };
 
-  function initializeEventListeners() {
+  const initializeEventListeners = () => {
     getEl("login-form")?.addEventListener("submit", async (e) => {
       e.preventDefault();
       const btn = getEl("login-btn");
@@ -2155,22 +2168,83 @@ const toggleButtonLoading = (btn, isLoading, text = "Loading...") => {
 
       // NEW: Monthly Payment Modal Buttons
       if (button && button.id === "pay-interest-only-btn") {
+        const mopSelect = document.getElementById("monthly-payment-mop");
+        const selectedMop = mopSelect ? mopSelect.value : (getEl("payment-modal")?.dataset.mop || "Cash");
+        if (!selectedMop) {
+          showToast("error", "Missing MOP", "Select Mode of Payment.");
+          return;
+        }
         const customerId = getEl("payment-customer-id").value;
         const installmentNum = parseInt(getEl("payment-installment-number").value, 10);
         const mop = getEl("payment-modal")?.dataset.mop || "Cash";
         const customer = window.allCustomers.active.find(c => c.id === customerId);
         if (!customer) return;
+
+        // Interest-only for monthly: pay current month's interest only
         const totalInterest = calculateTotalInterest(
           customer.loanDetails.principal,
           customer.loanDetails.interestRate,
           customer.loanDetails.loanGivenDate,
           customer.loanDetails.loanEndDate
         );
-        console.log("[INTEREST ONLY PAY]", { customerId, installmentNum, totalInterest, mop });
 
         toggleButtonLoading(button, true, "Paying...");
         try {
-          await recordPayment(customerId, installmentNum, totalInterest, mop);
+          // Record interest-only payment against current installment
+          await recordPayment(customerId, installmentNum, totalInterest, selectedMop);
+
+          // Fetch fresh copy to append next month's EMI and extend end date
+          const doc = await db.collection("customers").doc(customerId).get();
+          if (doc.exists) {
+            const fresh = doc.data();
+            const freshSchedule = [...fresh.paymentSchedule];
+            const inst = freshSchedule.find(p => p.installment === installmentNum);
+
+            if (fresh.loanTermType === "monthly" && inst && inst.status === "Pending" && inst.pendingAmount > 0) {
+              // Current installment now has only principal pending.
+              // Generate next month due date based on current installment due date.
+              const prevDueDate = new Date(inst.dueDate);
+              const nextDueDate = addMonthsPreserveAnchor(prevDueDate, 1);
+
+              // Compute ONE MONTH interest using the existing function over [prevDueDate -> nextDueDate]
+              const oneMonthInterest = calculateTotalInterest(
+                fresh.loanDetails.principal,
+                fresh.loanDetails.interestRate,
+                prevDueDate,
+                nextDueDate
+              );
+
+              // Next month's EMI = principal (still pending) + next month's interest
+              const nextAmountDue = +(inst.pendingAmount + oneMonthInterest).toFixed(2);
+
+              const yyyy = nextDueDate.getFullYear();
+              const mm = String(nextDueDate.getMonth() + 1).padStart(2, "0");
+              const dd = String(nextDueDate.getDate()).padStart(2, "0");
+
+              freshSchedule.push({
+                installment: freshSchedule.length + 1,
+                amountDue: nextAmountDue,
+                amountPaid: 0,
+                pendingAmount: nextAmountDue,
+                status: "Due",
+                paidDate: null,
+                modeOfPayment: null,
+                dueDate: `${yyyy}-${mm}-${dd}`
+              });
+
+              // Also extend loan end date to this new due date so Loan Summary and totals reflect the extra month
+              const newLoanEndDate = formatForInput({ id: "any" }, nextDueDate);
+
+              await db.collection("customers").doc(customerId).update({
+                paymentSchedule: freshSchedule,
+                "loanDetails.installments": freshSchedule.length,
+                "loanDetails.loanEndDate": newLoanEndDate
+              });
+
+              showToast("success", "Next EMI Added", "Next month's EMI generated and loan extended by one month.");
+            }
+          }
+
           showToast("success", "Interest Paid", "Interest payment recorded.");
           getEl("payment-modal").classList.remove("show");
           await loadAndRenderAll();
@@ -2183,6 +2257,12 @@ const toggleButtonLoading = (btn, isLoading, text = "Loading...") => {
       }
 
       if (button && button.id === "pay-full-monthly-btn") {
+        const mopSelect = document.getElementById("monthly-payment-mop");
+        const selectedMop = mopSelect ? mopSelect.value : (getEl("payment-modal")?.dataset.mop || "Cash");
+        if (!selectedMop) {
+          showToast("error", "Missing MOP", "Select Mode of Payment.");
+          return;
+        }
         const customerId = getEl("payment-customer-id").value;
         const installmentNum = parseInt(getEl("payment-installment-number").value, 10);
         const mop = getEl("payment-modal")?.dataset.mop || "Cash";
@@ -2194,442 +2274,419 @@ const toggleButtonLoading = (btn, isLoading, text = "Loading...") => {
 
         toggleButtonLoading(button, true, "Paying...");
         try {
-          await recordPayment(customerId, installmentNum, outstandingAmount, mop);
-          showToast("success", "Full Amount Paid", "Loan will be settled.");
-          getEl("payment-modal").classList.remove("show");
-          await settleLoanById(customerId);
+          await recordPayment(customerId, installmentNum, outstandingAmount, selectedMop);
+          // ...existing code...
         } catch (e) {
-          showToast("error", "Payment Failed", e.message);
+          // ...existing code...
+        } finally {
+          // ...existing code...
+        }
+      }
+
+      // NEW: Undo button handler (normal + monthly)
+      if (button && button.classList.contains("undo-payment-btn")) {
+        const cid = button.dataset.id;
+        const instNum = parseInt(button.dataset.installment, 10);
+        toggleButtonLoading(button, true, "Undo...");
+        try {
+          await undoInstallmentPayment(cid, instNum);
+          await loadAndRenderAll();
+          showCustomerDetails(cid);
+        } catch (err) {
+          showToast("error", "Undo Failed", err.message);
         } finally {
           toggleButtonLoading(button, false);
         }
       }
 
-      if (button) {
-        if (button.id === "generate-pdf-btn") {
-          const customerId = button.dataset.id;
-          if (customerId) generateAndDownloadPDF(customerId);
-        } else if (button.id === "send-whatsapp-btn") {
-          const customerId = button.dataset.id;
-          const customer = [
-            ...window.allCustomers.active,
-            ...window.allCustomers.settled,
-          ].find((c) => c.id === customerId);
-          if (customer) {
-            openWhatsApp(customer);
-          }
-        } else if (button.classList.contains("record-payment-btn")) {
-          const customerId = button.dataset.id;
-          const installmentNum = parseInt(button.dataset.installment, 10);
-          const customer = window.allCustomers.active.find(c => c.id === customerId);
-          if (!customer) return;
-          const installment = customer.paymentSchedule.find(p => p.installment === installmentNum);
-          if (!installment) return;
-          console.log("[PAY MODAL OPEN]", { customerId, installmentNum, installment });
+      // Open Pay/Edit modal (normal + monthly)
+      if (button && button.classList.contains("record-payment-btn")) {
+        const customerId = button.dataset.id;
+        const installmentNum = parseInt(button.dataset.installment, 10);
+        const customer = window.allCustomers.active.find(c => c.id === customerId);
+        if (!customer) return;
+        const installment = customer.paymentSchedule.find(p => p.installment === installmentNum);
+        if (!installment) return;
+        safeSetValue("payment-customer-id", customerId);
+        safeSetValue("payment-installment-number", installmentNum);
+        const modal = getEl("payment-modal");
+        if (!modal) return;
+        safeSetText(modal.querySelector(".payment-customer-name"), customer.name);
+        safeSetText(modal.querySelector(".payment-customer-avatar"), customer.name.charAt(0).toUpperCase());
+        safeSetText("payment-installment-display", String(installmentNum));
+        const defaultMop = installment.modeOfPayment || customer.loanDetails?.modeOfPayment || "Cash";
 
-          safeSetValue("payment-customer-id", customerId);
-          safeSetValue("payment-installment-number", installmentNum);
-
-          const modal = getEl("payment-modal");
-          if (!modal) return;
-
-          safeSetText(modal.querySelector(".payment-customer-name"), customer.name);
-          safeSetText(modal.querySelector(".payment-customer-avatar"), customer.name.charAt(0).toUpperCase());
-          safeSetText("payment-installment-display", String(installmentNum));
-
-          // Derive default Mode of Payment
-          const defaultMop = installment.modeOfPayment ||
-            customer.loanDetails?.modeOfPayment ||
-            "Cash";
-
-          // MONTHLY LOAN BRANCH
-          if (customer.loanTermType === "monthly") {
-            getEl("normal-payment-body").style.display = "none";
-            getEl("normal-payment-footer").classList.add("hidden");
-            getEl("monthly-payment-body").style.display = "block";
-            getEl("monthly-payment-footer").classList.remove("hidden");
-
-            const totalInterest = calculateTotalInterest(
-              customer.loanDetails.principal,
-              customer.loanDetails.interestRate,
-              customer.loanDetails.loanGivenDate,
-              customer.loanDetails.loanEndDate
-            );
+        if (customer.loanTermType === "monthly") {
+          getEl("normal-payment-body").style.display = "none";
+          getEl("normal-payment-footer").classList.add("hidden");
+          getEl("monthly-payment-body").style.display = "block";
+          getEl("monthly-payment-footer").classList.remove("hidden");
+          const totalInterest = calculateTotalInterest(
+            customer.loanDetails.principal,
+            customer.loanDetails.interestRate,
+            customer.loanDetails.loanGivenDate,
+            customer.loanDetails.loanEndDate
+          );
             const principal = customer.loanDetails.principal;
-            const outstanding = installment.pendingAmount;
-
-            safeSetText("monthly-payment-principal", formatCurrency(principal));
-            safeSetText("monthly-payment-interest", formatCurrency(totalInterest));
-            safeSetText("payment-due-display", formatCurrency(outstanding));
-
-            // Store current mop for monthly actions
-            modal.dataset.mop = defaultMop;
-
-            if (installment.status === "Pending") {
-              const interestBtn = getEl("pay-interest-only-btn");
-              if (interestBtn) {
-                interestBtn.disabled = true;
-                interestBtn.textContent = "Interest Already Paid";
-              }
-              safeSetText("pay-interest-only-btn-subtext", "");
-              safeSetText("pay-full-monthly-btn-subtext", formatCurrency(outstanding));
-            } else {
-              safeSetText("pay-interest-only-btn-subtext", formatCurrency(totalInterest));
-              safeSetText("pay-full-monthly-btn-subtext", formatCurrency(outstanding));
+          const outstanding = installment.pendingAmount;
+          safeSetText("monthly-payment-principal", formatCurrency(principal));
+          safeSetText("monthly-payment-interest", formatCurrency(totalInterest));
+          safeSetText("payment-due-display", formatCurrency(outstanding));
+          modal.dataset.mop = defaultMop;
+          if (installment.status === "Pending") {
+            const interestBtn = getEl("pay-interest-only-btn");
+            if (interestBtn) {
+              interestBtn.disabled = true;
+              interestBtn.textContent = "Interest Already Paid";
             }
+            safeSetText("pay-interest-only-btn-subtext", "");
+            safeSetText("pay-full-monthly-btn-subtext", formatCurrency(outstanding));
           } else {
-            // NORMAL LOAN BRANCH
-            getEl("normal-payment-body").style.display = "block";
-            getEl("normal-payment-footer").classList.remove("hidden");
-            getEl("monthly-payment-body").style.display = "none";
-            getEl("monthly-payment-footer").classList.add("hidden");
-
-            const existingPaid = Number(installment.amountPaid || 0);
-            const computedPending =
-              installment.pendingAmount !== undefined && installment.pendingAmount !== null
-                ? Number(installment.pendingAmount)
-                : Math.max(0, Number(installment.amountDue) - existingPaid);
-
-            safeSetText("payment-due-display", formatCurrency(computedPending));
-
-            const paymentAmountInput = getEl("payment-amount");
-            if (paymentAmountInput) {
-              paymentAmountInput.value = "";
-              paymentAmountInput.setAttribute("max", computedPending);
-            }
-
-            const paymentMopInput = getEl("payment-mop");
-            if (paymentMopInput) {
-              paymentMopInput.value = defaultMop; // Auto-fill MOP
-            }
-
-            const updatePendingDisplay = () => {
-              const payNow = parseFloat(paymentAmountInput?.value || "0") || 0;
-              const pendingAmount = Math.max(0, computedPending - payNow);
-              const pendingContainer = modal.querySelector(".payment-pending-display");
-              if (!pendingContainer) return;
-              if (pendingAmount > 0.001) {
-                safeSetText(pendingContainer.querySelector(".payment-pending-value"), formatCurrency(pendingAmount));
-                pendingContainer.style.display = "block";
-              } else {
-                pendingContainer.style.display = "none";
-              }
-            };
-
-            if (paymentAmountInput) {
-              paymentAmountInput.oninput = updatePendingDisplay;
-            }
-
-            const payFullBtn = getEl("pay-full-btn");
-            if (payFullBtn && paymentAmountInput) {
-              payFullBtn.onclick = () => {
-                paymentAmountInput.value = computedPending;
-                updatePendingDisplay();
-                paymentAmountInput.focus();
-                console.log("[PAY FULL CLICK]", { computedPending });
-              };
-            }
-
-            updatePendingDisplay();
+            safeSetText("pay-interest-only-btn-subtext", formatCurrency(totalInterest));
+            safeSetText("pay-full-monthly-btn-subtext", formatCurrency(outstanding));
           }
+          // Ensure monthly MOP select reflects default
+          const monthlyMopSel = document.getElementById("monthly-payment-mop");
+          if (monthlyMopSel) monthlyMopSel.value = defaultMop;
+        } else {
+          getEl("normal-payment-body").style.display = "block";
+          getEl("normal-payment-footer").classList.remove("hidden");
+          getEl("monthly-payment-body").style.display = "none";
+          getEl("monthly-payment-footer").classList.add("hidden");
+          const existingPaid = Number(installment.amountPaid || 0);
+          const computedPending = installment.pendingAmount != null
+            ? Number(installment.pendingAmount)
+            : Math.max(0, Number(installment.amountDue) - existingPaid);
+          safeSetText("payment-due-display", formatCurrency(computedPending));
+          const paymentAmountInput = getEl("payment-amount");
+          if (paymentAmountInput) {
+            paymentAmountInput.value = "";
+            paymentAmountInput.setAttribute("max", computedPending);
+          }
+          const paymentMopInput = getEl("payment-mop");
+          if (paymentMopInput) paymentMopInput.value = defaultMop;
+          const updatePendingDisplay = () => {
+            const payNow = parseFloat(paymentAmountInput?.value || "0") || 0;
+            const pendingAmount = Math.max(0, computedPending - payNow);
+            const pendingContainer = modal.querySelector(".payment-pending-display");
+            if (!pendingContainer) return;
+            if (pendingAmount > 0.001) {
+              safeSetText(pendingContainer.querySelector(".payment-pending-value"), formatCurrency(pendingAmount));
+              pendingContainer.style.display = "block";
+            } else {
+              pendingContainer.style.display = "none";
+            }
+          };
+          if (paymentAmountInput) paymentAmountInput.oninput = updatePendingDisplay;
+          const payFullBtn = getEl("pay-full-btn");
+          if (payFullBtn && paymentAmountInput) {
+            payFullBtn.onclick = () => {
+              paymentAmountInput.value = computedPending;
+              updatePendingDisplay();
+              paymentAmountInput.focus();
+            };
+          }
+          updatePendingDisplay();
+        }
+        modal.classList.add("show");
+      }
 
-          modal.classList.add("show");
-        } else if (button.classList.contains("delete-activity-btn")) {
-          const activityId = button.dataset.id;
-          showConfirmation(
-            "Delete Activity?",
-            "Are you sure you want to delete this activity log?",
-            async () => {
-              try {
-                await db.collection("activities").doc(activityId).delete();
-                getEl(`activity-${activityId}`).remove();
-                showToast("success", "Deleted", "Activity log removed.");
-              } catch (error) {
-                showToast("error", "Delete Failed", error.message);
-              }
+      if (button && button.id === "delete-activity-btn") {
+        const activityId = button.dataset.id;
+        showConfirmation(
+          "Delete Activity?",
+          "Are you sure you want to delete this activity log?",
+          async () => {
+            try {
+              await db.collection("activities").doc(activityId).delete();
+              getEl(`activity-${activityId}`).remove();
+              showToast("success", "Deleted", "Activity log removed.");
+            } catch (error) {
+              showToast("error", "Delete Failed", error.message);
             }
-          );
-        } else if (button.classList.contains("restore-customer-btn")) {
-          const customerId = button.dataset.id;
-          const customer = window.allCustomers.settled.find(
-            (c) => c.id === customerId
-          );
-          const customerName = customer ? customer.name : "this loan";
-          const financeCount = customer ? customer.financeCount || 1 : "";
+          }
+        );
+      } else if (button.classList.contains("restore-customer-btn")) {
+        const customerId = button.dataset.id;
+        const customer = window.allCustomers.settled.find(
+          (c) => c.id === customerId
+        );
+        const customerName = customer ? customer.name : "this loan";
+        const financeCount = customer ? customer.financeCount || 1 : "";
 
-          showConfirmation(
-            "Restore Loan?",
-            `This will move Finance ${financeCount} for ${customerName} from 'Settled' back to 'Active'. Are you sure?`,
-            async () => {
-              await restoreLoanById(customerId);
-            }
-          );
-        } else if (button.classList.contains("delete-customer-btn")) {
-          const customerId = button.dataset.id;
-          showConfirmation(
-            "Delete Customer?",
-            "This will permanently delete this customer, their KYC files, and all related activity logs. This action cannot be undone.",
-            async () => {
-              try {
-                await deleteSingleCustomerCascade(customerId);
-                const res = await deleteSingleCustomerCascade(customerId);
-                if (res && res.name) {
-                  try {
-                    await renumberActiveLoansByCustomerName(res.name);
-                  } catch (e) {
-                    console.warn("Renumbering after delete failed:", e);
-                  }
+        showConfirmation(
+          "Restore Loan?",
+          `This will move Finance ${financeCount} for ${customerName} from 'Settled' back to 'Active'. Are you sure?`,
+          async () => {
+            await restoreLoanById(customerId);
+          }
+        );
+      } else if (button.classList.contains("delete-customer-btn")) {
+        const customerId = button.dataset.id;
+        showConfirmation(
+          "Delete Customer?",
+          "This will permanently delete this customer, their KYC files, and all related activity logs. This action cannot be undone.",
+          async () => {
+            try {
+              await deleteSingleCustomerCascade(customerId);
+              const res = await deleteSingleCustomerCascade(customerId);
+              if (res && res.name) {
+                try {
+                  await renumberActiveLoansByCustomerName(res.name);
+                } catch (e) {
+                  console.warn("Renumbering after delete failed:", e);
                 }
-                showToast(
-                  "success",
-                  "Customer Deleted",
-                  "All customer data and files have been removed."
-                );
-                await loadAndRenderAll();
-              } catch (e) {
-                showToast("error", "Delete Failed", e.message);
               }
-            }
-          );
-        } else if (button.id === "delete-all-settled-btn") {
-          showConfirmation(
-            "Delete All Settled Accounts?",
-            "This will permanently delete ALL settled and refinanced accounts, their KYC files, and related activity logs. This action cannot be undone. Are you sure?",
-            async () => {
-              const btn = getEl("delete-all-settled-btn");
-              toggleButtonLoading(btn, true, "Deleting...");
-              try {
-                const querySnapshot = await db
-                  .collection("customers")
-                  .where("owner", "==", currentUser.uid)
-                  .where("status", "in", ["settled", "Refinanced"])
-                  .get();
-
-                if (querySnapshot.empty) {
-                  showToast(
-                    "success",
-                    "No Accounts",
-                    "There are no settled accounts to delete."
-                  );
-                  toggleButtonLoading(btn, false);
-                  return;
-                }
-                for (const doc of querySnapshot.docs) {
-                  const data = doc.data();
-                  try {
-                    await deleteSingleCustomerCascade(doc.id, data);
-                  } catch (e) {
-                    console.warn(
-                      "Failed to delete settled record:",
-                      doc.id,
-                      e.message || e
-                    );
-                  }
-                }
-                showToast(
-                  "success",
-                  "Deletion Complete",
-                  `${querySnapshot.size} settled account(s) have been deleted.`
-                );
-                await loadAndRenderAll();
-              } catch (error) {
-                showToast("error", "Deletion Failed", error.message);
-              } finally {
-                toggleButtonLoading(btn, false);
-              }
-            }
-          );
-        } else if (button.id === "clear-all-activities-btn") {
-          showConfirmation(
-            "Clear All Activities?",
-            "This will delete all activity logs permanently. Are you sure?",
-            async () => {
-              const snapshot = await db
-                .collection("activities")
-                .where("owner_uid", "==", currentUser.uid)
-                .get();
-              const batch = db.batch();
-              snapshot.docs.forEach((doc) => batch.delete(doc.ref));
-              await batch.commit();
-              recentActivities = [];
-              renderActivityLog();
               showToast(
                 "success",
-                "All Cleared",
-                "All activity logs have been deleted."
+                "Customer Deleted",
+                "All customer data and files have been removed."
               );
+              await loadAndRenderAll();
+            } catch (e) {
+              showToast("error", "Delete Failed", e.message);
             }
-          );
-        } else if (
-          button.id === "logout-btn" ||
-          button.id === "logout-settings-btn"
-        ) {
-          auth.signOut();
-        } else if (button.id === "theme-toggle-btn") {
-          if (window.toggleDarkMode) window.toggleDarkMode();
-        } else if (button.id === "main-add-customer-btn") {
-          getEl("customer-form").reset();
-          getEl("customer-form").classList.add("hidden");
-          getEl("loan-type-selection").classList.remove("hidden"); // Show loan type selection
-          getEl("customer-id").value = "";
-          getEl("customer-form-modal-title").textContent = "Add New Customer";
-          const todayStr = formatForInput({ id: "any" }, new Date());
-          const lgd = getEl("loan-given-date");
-          if (lgd) lgd.value = todayStr;
-          setAutomaticFirstDate();
-
-          getEl("loan-mop").value = "Cash";
-
-          getEl("personal-info-fields").style.display = "block";
-          getEl("kyc-info-fields").style.display = "block";
-          getEl("loan-details-fields").style.display = "block";
-          if (typeof setLoanDetailFieldsRequired === "function")
-            setLoanDetailFieldsRequired(true);
-          getEl("installment-preview").classList.add("hidden");
-
-          document
-            .querySelectorAll(".file-input-label span")
-            .forEach((span) => {
-              span.textContent = "Choose a file...";
-              const lbl = span.closest(".file-input-label");
-              if (lbl) lbl.title = "";
-            });
-          getEl("customer-form-modal").classList.add("show");
-        } else if (button.id === "edit-customer-info-btn") {
-          const customer = [
-            ...window.allCustomers.active,
-            ...window.allCustomers.settled,
-          ].find((c) => c.id === button.dataset.id);
-          if (!customer) return;
-
-          // HIDE loan type selection
-          getEl("loan-type-selection").classList.add("hidden");
-          getEl("customer-form").classList.remove("hidden");
-
-          getEl("customer-form").reset();
-          getEl("customer-id").value = customer.id;
-          getEl("loan-term-type").value = customer.loanTermType || "normal";
-
-          // Personal fields
-          getEl("customer-name").value = customer.name;
-          getEl("customer-phone").value = customer.phone || "";
-          getEl("customer-dob").value = customer.dob || "";
-          getEl("customer-father-name").value = customer.fatherName || "";
-          getEl("customer-whatsapp").value = customer.whatsapp || "";
-          getEl("customer-address").value = customer.address || "";
-
-          getEl("customer-aadhar-number").value = customer.aadharNumber || "";
-          getEl("customer-pan-number").value =
-            (customer.panNumber || "").toUpperCase();
-          getEl("customer-bank-name").value = customer.bankName || "";
-          getEl("customer-account-number").value =
-            customer.accountNumber || "";
-          getEl("customer-ifsc").value = customer.ifsc || "";
-
-          // Mode of payment default
-          getEl("loan-mop").value =
-            customer.loanDetails?.modeOfPayment || "Cash";
-
-          // Check if loan details are editable (no installment paid)
-          const loanEditable = canEditLoanDetailsForCustomer(customer);
-
-          // NEW: Check loanTermType
-          if (customer.loanTermType === "monthly") {
-            // Hide fields not needed for monthly loan
-            getEl("collection-frequency-group").style.display = "none";
-            getEl("first-collection-date-group").style.display = "none";
-            getEl("loan-end-date-group").style.display = "none";
-            getEl("installment-preview").classList.add("hidden");
-            // Make them not required
-            getEl("collection-frequency").removeAttribute("required");
-            getEl("first-collection-date").removeAttribute("required");
-            getEl("loan-end-date").removeAttribute("required");
-          } else {
-            // Show all normal fields
-            getEl("collection-frequency-group").style.display = "block";
-            getEl("first-collection-date-group").style.display = "block";
-            getEl("loan-end-date-group").style.display = "block";
-            getEl("installment-preview").classList.remove("hidden");
-            setLoanDetailFieldsRequired(true);
           }
+        );
+      } else if (button.id === "delete-all-settled-btn") {
+        showConfirmation(
+          "Delete All Settled Accounts?",
+          "This will permanently delete ALL settled and refinanced accounts, their KYC files, and related activity logs. This action cannot be undone. Are you sure?",
+          async () => {
+            const btn = getEl("delete-all-settled-btn");
+            toggleButtonLoading(btn, true, "Deleting...");
+            try {
+              const querySnapshot = await db
+                .collection("customers")
+                .where("owner", "==", currentUser.uid)
+                .where("status", "in", ["settled", "Refinanced"])
+                .get();
 
-          // Show or hide loan detail fields based on editability
-          if (loanEditable && customer.loanDetails) {
-            // Show and populate loan detail fields
-            getEl("loan-details-fields").style.display = "block";
-
-            // Populate loan details fields
-            getEl("principal-amount").value =
-              customer.loanDetails.principal || "";
-            getEl("interest-rate-modal").value =
-              customer.loanDetails.interestRate || "";
-            getEl("collection-frequency").value =
-              customer.loanDetails.frequency || "monthly";
-            getEl("first-collection-date").value =
-              customer.loanDetails.firstCollectionDate || "";
-            getEl("loan-end-date").value =
-              customer.loanDetails.loanEndDate || "";
-            getEl("loan-given-date").value =
-              customer.loanDetails.loanGivenDate || "";
-          } else {
-            // Hide loan detail fields if not editable
-            getEl("loan-details-fields").style.display = "none";
-            if (typeof setLoanDetailFieldsRequired === "function")
-              setLoanDetailFieldsRequired(false);
-
-            // Notify user why loan details can't be edited
-            if (!loanEditable) {
+              if (querySnapshot.empty) {
+                showToast(
+                  "success",
+                  "No Accounts",
+                  "There are no settled accounts to delete."
+                );
+                toggleButtonLoading(btn, false);
+                return;
+              }
+              for (const doc of querySnapshot.docs) {
+                const data = doc.data();
+                try {
+                  await deleteSingleCustomerCascade(doc.id, data);
+                } catch (e) {
+                  console.warn(
+                    "Failed to delete settled record:",
+                    doc.id,
+                    e.message || e
+                  );
+                }
+              }
               showToast(
-                "error",
-                "Cannot Edit Loan Details",
-                "Loan details cannot be edited because at least one installment has already been paid."
+                "success",
+                "Deletion Complete",
+                `${querySnapshot.size} settled account(s) have been deleted.`
               );
+              await loadAndRenderAll();
+            } catch (error) {
+              showToast("error", "Deletion Failed", error.message);
+            } finally {
+              toggleButtonLoading(btn, false);
             }
           }
-
-          getEl("personal-info-fields").style.display = "block";
-          getEl("kyc-info-fields").style.display = "block";
-          getEl("customer-form-modal-title").textContent = "Edit Customer Info";
-          getEl("customer-details-modal").classList.remove("show");
-          getEl("customer-form-modal").classList.add("show");
-        } else if (button.id === "settle-loan-btn") {
-          const currentLoanId = button.dataset.id;
-          const currentCustomer = window.allCustomers.active.find(
-            (c) => c.id === currentLoanId
-          );
-          if (!currentCustomer) return;
-
-          // NEW: Don't show modal for monthly loan
-          if (currentCustomer.loanTermType === "monthly") {
-            showConfirmation(
-              `Settle Loan?`,
-              `This will move this Monthly Loan to the 'Settled' list. Are you sure?`,
-              () => {
-                settleLoanById(currentLoanId);
-              }
+        );
+      } else if (button.id === "clear-all-activities-btn") {
+        showConfirmation(
+          "Clear All Activities?",
+          "This will delete all activity logs permanently. Are you sure?",
+          async () => {
+            const snapshot = await db
+              .collection("activities")
+              .where("owner_uid", "==", currentUser.uid)
+              .get();
+            const batch = db.batch();
+            snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+            await batch.commit();
+            recentActivities = [];
+            renderActivityLog();
+            showToast(
+              "success",
+              "All Cleared",
+              "All activity logs have been deleted."
             );
-            return;
           }
+        );
+      } else if (
+        button.id === "logout-btn" ||
+        button.id === "logout-settings-btn"
+      ) {
+        auth.signOut();
+      } else if (button.id === "theme-toggle-btn") {
+        if (window.toggleDarkMode) window.toggleDarkMode();
+      } else if (button.id === "main-add-customer-btn") {
+        getEl("customer-form").reset();
+        getEl("customer-form").classList.add("hidden");
+        getEl("loan-type-selection").classList.remove("hidden"); // Show loan type selection
+        getEl("customer-id").value = "";
+        getEl("customer-form-modal-title").textContent = "Add New Customer";
+        const todayStr = formatForInput({ id: "any" }, new Date());
+        const lgd = getEl("loan-given-date");
+        if (lgd) lgd.value = todayStr;
+        setAutomaticFirstDate();
 
-          const allActiveLoansForCustomer = window.allCustomers.active.filter(
-            (c) => c.name === currentCustomer.name
-          );
+        getEl("loan-mop").value = "Cash";
 
-          if (allActiveLoansForCustomer.length <= 1) {
-            showConfirmation(
-              `Settle Loan?`,
-              `This will move Finance ${
-                currentCustomer.financeCount || 1
-              } to the 'Settled' list. Are you sure?`,
-              () => {
-                settleLoanById(currentLoanId);
-              }
+        getEl("personal-info-fields").style.display = "block";
+        getEl("kyc-info-fields").style.display = "block";
+        getEl("loan-details-fields").style.display = "block";
+        if (typeof setLoanDetailFieldsRequired === "function")
+          setLoanDetailFieldsRequired(true);
+        getEl("installment-preview").classList.add("hidden");
+
+        document
+          .querySelectorAll(".file-input-label span")
+          .forEach((span) => {
+            span.textContent = "Choose a file...";
+            const lbl = span.closest(".file-input-label");
+            if (lbl) lbl.title = "";
+          });
+        getEl("customer-form-modal").classList.add("show");
+      } else if (button.id === "edit-customer-info-btn") {
+        const customer = [
+          ...window.allCustomers.active,
+          ...window.allCustomers.settled,
+        ].find((c) => c.id === button.dataset.id);
+        if (!customer) return;
+
+        // HIDE loan type selection
+        getEl("loan-type-selection").classList.add("hidden");
+        getEl("customer-form").classList.remove("hidden");
+
+        getEl("customer-form").reset();
+        getEl("customer-id").value = customer.id;
+        getEl("loan-term-type").value = customer.loanTermType || "normal";
+
+        // Personal fields
+        getEl("customer-name").value = customer.name;
+        getEl("customer-phone").value = customer.phone || "";
+        getEl("customer-dob").value = customer.dob || "";
+        getEl("customer-father-name").value = customer.fatherName || "";
+        getEl("customer-whatsapp").value = customer.whatsapp || "";
+        getEl("customer-address").value = customer.address || "";
+
+        getEl("customer-aadhar-number").value = customer.aadharNumber || "";
+        getEl("customer-pan-number").value =
+          (customer.panNumber || "").toUpperCase();
+        getEl("customer-bank-name").value = customer.bankName || "";
+        getEl("customer-account-number").value =
+          customer.accountNumber || "";
+        getEl("customer-ifsc").value = customer.ifsc || "";
+
+        // Mode of payment default
+        getEl("loan-mop").value =
+          customer.loanDetails?.modeOfPayment || "Cash";
+
+        // Check if loan details are editable (no installment paid)
+        const loanEditable = canEditLoanDetailsForCustomer(customer);
+
+        // NEW: Check loanTermType
+        if (customer.loanTermType === "monthly") {
+          // Hide fields not needed for monthly loan
+          getEl("collection-frequency-group").style.display = "none";
+          getEl("first-collection-date-group").style.display = "none";
+          getEl("loan-end-date-group").style.display = "none";
+          getEl("installment-preview").classList.add("hidden");
+          // Make them not required
+          getEl("collection-frequency").removeAttribute("required");
+          getEl("first-collection-date").removeAttribute("required");
+          getEl("loan-end-date").removeAttribute("required");
+        } else {
+          // Show all normal fields
+          getEl("collection-frequency-group").style.display = "block";
+          getEl("first-collection-date-group").style.display = "block";
+          getEl("loan-end-date-group").style.display = "block";
+          getEl("installment-preview").classList.remove("hidden");
+          setLoanDetailFieldsRequired(true);
+        }
+
+        // Show or hide loan detail fields based on editability
+        if (loanEditable && customer.loanDetails) {
+          // Show and populate loan detail fields
+          getEl("loan-details-fields").style.display = "block";
+
+          // Populate loan details fields
+          getEl("principal-amount").value =
+            customer.loanDetails.principal || "";
+          getEl("interest-rate-modal").value =
+            customer.loanDetails.interestRate || "";
+          getEl("collection-frequency").value =
+            customer.loanDetails.frequency || "monthly";
+          getEl("first-collection-date").value =
+            customer.loanDetails.firstCollectionDate || "";
+          getEl("loan-end-date").value =
+            customer.loanDetails.loanEndDate || "";
+          getEl("loan-given-date").value =
+            customer.loanDetails.loanGivenDate || "";
+        } else {
+          // Hide loan detail fields if not editable
+          getEl("loan-details-fields").style.display = "none";
+          if (typeof setLoanDetailFieldsRequired === "function")
+            setLoanDetailFieldsRequired(false);
+
+          // Notify user why loan details can't be edited
+          if (!loanEditable) {
+            showToast(
+              "error",
+              "Cannot Edit Loan Details",
+              "Loan details cannot be edited because at least one installment has already been paid."
             );
-          } else {
-            const optionsContainer = getEl("settle-options-container");
-            optionsContainer.innerHTML = allActiveLoansForCustomer
-              .map(
-                (loan) => `
+          }
+        }
+
+        getEl("personal-info-fields").style.display = "block";
+        getEl("kyc-info-fields").style.display = "block";
+        getEl("customer-form-modal-title").textContent = "Edit Customer Info";
+        getEl("customer-details-modal").classList.remove("show");
+        getEl("customer-form-modal").classList.add("show");
+      } else if (button.id === "settle-loan-btn") {
+        const currentLoanId = button.dataset.id;
+        const currentCustomer = window.allCustomers.active.find(
+          (c) => c.id === currentLoanId
+        );
+        if (!currentCustomer) return;
+
+        // NEW: Don't show modal for monthly loan
+        if (currentCustomer.loanTermType === "monthly") {
+          showConfirmation(
+            `Settle Loan?`,
+            `This will move this Monthly Loan to the 'Settled' list. Are you sure?`,
+            () => {
+              settleLoanById(currentLoanId);
+            }
+          );
+          return;
+        }
+
+        const allActiveLoansForCustomer = window.allCustomers.active.filter(
+          (c) => c.name === currentCustomer.name
+        );
+
+        if (allActiveLoansForCustomer.length <= 1) {
+          showConfirmation(
+            `Settle Loan?`,
+            `This will move Finance ${
+              currentCustomer.financeCount || 1
+            } to the 'Settled' list. Are you sure?`,
+            () => {
+              settleLoanById(currentLoanId);
+            }
+          );
+        } else {
+          const optionsContainer = getEl("settle-options-container");
+          optionsContainer.innerHTML = allActiveLoansForCustomer
+            .map(
+              (loan) => `
                     <div class="selection-item">
                         <input type="radio" name="settle-loan" id="settle-${
                           loan.id
@@ -2646,200 +2703,199 @@ const toggleButtonLoading = (btn, isLoading, text = "Loading...") => {
                         </label>
                     </div>
                 `
-              )
-              .join("");
+            )
+            .join("");
 
-            getEl("settle-selection-modal").classList.add("show");
-          }
-        } else if (button.id === "settle-confirm-btn") {
-          const selectedRadio = document.querySelector(
-            'input[name="settle-loan"]:checked'
-          );
-          if (selectedRadio) {
-            const loanIdToSettle = selectedRadio.value;
-            showConfirmation(
-              "Settle This Loan?",
-              "This will move the selected loan to Settled. Continue?",
-              () => settleLoanById(loanIdToSettle)
-            );
-          } else {
-            showToast(
-              "error",
-              "No Selection",
-              "Please select a loan to settle."
-            );
-          }
-        } else if (button.id === "settle-all-btn") {
-          const firstInput = document.querySelector(
-            'input[name="settle-loan"]'
-          );
-          if (!firstInput) {
-            showToast(
-              "error",
-              "No Loans",
-              "No active loans found for this customer."
-            );
-            return;
-          }
-          const inputs = Array.from(
-            document.querySelectorAll('input[name="settle-loan"]')
-          );
-          const loanIds = inputs.map((r) => r.value);
-          if (loanIds.length === 0) {
-            showToast(
-              "error",
-              "No Loans",
-              "No active loans found for this customer."
-            );
-            return;
-          }
+          getEl("settle-selection-modal").classList.add("show");
+        }
+      } else if (button.id === "settle-confirm-btn") {
+        const selectedRadio = document.querySelector(
+          'input[name="settle-loan"]:checked'
+        );
+        if (selectedRadio) {
+          const loanIdToSettle = selectedRadio.value;
           showConfirmation(
-            "Settle ALL Loans?",
-            "This will move all selected customer's active loans to Settled. Continue?",
-            async () => {
-              try {
-                for (const id of loanIds) {
-                  await settleLoanById(id);
-                }
-                showToast(
-                  "success",
-                  "All Settled",
-                  "All active loans for the customer have been settled."
-                );
-              } catch (err) {
-                showToast("error", "Failed", err.message || String(err));
-              }
-            }
+            "Settle This Loan?",
+            "This will move the selected loan to Settled. Continue?",
+            () => settleLoanById(loanIdToSettle)
           );
-        } else if (button.id === "add-new-loan-btn") {
-          const customerId = button.dataset.id;
-          const customer = window.allCustomers.active.find(
-            (c) => c.id === customerId
-          );
-          if (!customer) return;
-
-          getEl("new-loan-customer-id").value = customerId;
-          getEl("new-loan-form").reset();
-
-          const todayStr = formatForInput({ id: "any" }, new Date());
-          const nlgd = getEl("new-loan-given-date");
-          if (nlgd) nlgd.value = todayStr;
-          const freq = getEl("new-loan-frequency").value;
-          let base = new Date();
-          if (freq === "daily") base.setDate(base.getDate() + 1);
-          else if (freq === "weekly") base.setDate(base.getDate() + 7);
-          else if (freq === "monthly") base.setMonth(base.getMonth() + 1);
-          getEl("new-loan-start-date").value = formatForInput(
-            { id: "any" },
-            base
-          );
-
-          getEl("new-loan-mop").value = "Cash";
-
-          getEl("new-loan-installment-preview").classList.add("hidden");
-          getEl("new-loan-modal").classList.add("show");
-        } else if (button.id === "export-active-btn") {
-          exportToExcel(
-            window.allCustomers.active,
-            "Active_Customers_Report.xlsx"
-          );
-        } else if (button.id === "export-settled-btn") {
-          exportToExcel(
-            window.allCustomers.settled,
-            "Settled_Customers_Report.xlsx"
-          );
-        } else if (button.id === "export-backup-btn") {
-          try {
-            const backupData = {
-              version: "2.0.0",
-              exportedAt: new Date().toISOString(),
-              customers: window.allCustomers,
-            };
-            const dataStr = JSON.stringify(backupData, null, 2);
-            const blob = new Blob([dataStr], { type: "application/json" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `loan-manager-backup-${
-              new Date().toISOString().split("T")[0]
-            }.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            showToast(
-              "success",
-              "Export Successful",
-              "Your data has been downloaded."
-            );
-          } catch (e) {
-            showToast("error", "Export Failed", e.message);
-          }
-        } else if (button.id === "import-backup-btn") {
-          const fileInput = getEl("import-backup-input");
-          const file = fileInput.files[0];
-          if (!file) {
-            showToast(
-              "error",
-              "No File",
-              "Please choose a backup file to import."
-            );
-            return;
-          }
-          showConfirmation(
-            "Overwrite All Data?",
-            "Importing this file will permanently delete ALL your current customers and replacing them with the data from the backup. This cannot be undone. Are you sure you want to proceed?",
-            () => {
-              const reader = new FileReader();
-              reader.onload = async (event) => {
-                try {
-                  const backup = JSON.parse(event.target.result);
-                  if (
-                    !backup.customers ||
-                    !backup.customers.active ||
-                    !backup.customers.settled
-                  ) {
-                    throw new Error("Invalid backup file format.");
-                  }
-                  toggleButtonLoading(button, true, "Importing...");
-                  const batch = db.batch();
-                  const existingCustomers = await db
-                    .collection("customers")
-                    .where("owner", "==", currentUser.uid)
-                    .get();
-                  existingCustomers.docs.forEach((doc) =>
-                    batch.delete(doc.ref)
-                  );
-                  [
-                    ...backup.customers.active,
-                    ...backup.customers.settled,
-                  ].forEach((cust) => {
-                    const newDocRef = db.collection("customers").doc();
-                    const newCustData = {
-                      ...cust,
-                      owner: currentUser.uid,
-                      createdAt: new Date(),
-                    };
-                    delete newCustData.id;
-                    batch.set(newDocRef, newCustData);
-                  });
-                  await batch.commit();
-                  showToast(
-                    "success",
-                    "Import Complete",
-                    "Your data has been restored. Refreshing..."
-                  );
-                  await loadAndRenderAll();
-                } catch (e) {
-                  showToast("error", "Import Failed", e.message);
-                } finally {
-                  toggleButtonLoading(button, false);
-                }
-              };
-              reader.readAsText(file);
-            }
+        } else {
+          showToast(
+            "error",
+            "No Selection",
+            "Please select a loan to settle."
           );
         }
+      } else if (button.id === "settle-all-btn") {
+        const firstInput = document.querySelector(
+          'input[name="settle-loan"]'
+        );
+        if (!firstInput) {
+          showToast(
+            "error",
+            "No Loans",
+            "No active loans found for this customer."
+          );
+          return;
+        }
+        const inputs = Array.from(
+          document.querySelectorAll('input[name="settle-loan"]')
+        );
+        const loanIds = inputs.map((r) => r.value);
+        if (loanIds.length === 0) {
+          showToast(
+            "error",
+            "No Loans",
+            "No active loans found for this customer."
+          );
+          return;
+        }
+        showConfirmation(
+          "Settle ALL Loans?",
+          "This will move all selected customer's active loans to Settled. Continue?",
+          async () => {
+            try {
+              for (const id of loanIds) {
+                await settleLoanById(id);
+              }
+              showToast(
+                "success",
+                "All Settled",
+                "All active loans for the customer have been settled."
+              );
+            } catch (err) {
+              showToast("error", "Failed", err.message || String(err));
+            }
+          }
+        );
+      } else if (button.id === "add-new-loan-btn") {
+        const customerId = button.dataset.id;
+        const customer = window.allCustomers.active.find(
+          (c) => c.id === customerId
+        );
+        if (!customer) return;
+
+        getEl("new-loan-customer-id").value = customerId;
+        getEl("new-loan-form").reset();
+
+        const todayStr = formatForInput({ id: "any" }, new Date());
+        const nlgd = getEl("new-loan-given-date");
+        if (nlgd) nlgd.value = todayStr;
+        const freq = getEl("new-loan-frequency").value;
+        let base = new Date();
+        if (freq === "daily") base.setDate(base.getDate() + 1);
+        else if (freq === "weekly") base.setDate(base.getDate() + 7);
+        else if (freq === "monthly") base.setMonth(base.getMonth() + 1);
+        getEl("new-loan-start-date").value = formatForInput(
+          { id: "any" },
+          base
+        );
+
+        getEl("new-loan-mop").value = "Cash";
+
+        getEl("new-loan-installment-preview").classList.add("hidden");
+        getEl("new-loan-modal").classList.add("show");
+      } else if (button.id === "export-active-btn") {
+        exportToExcel(
+          window.allCustomers.active,
+          "Active_Customers_Report.xlsx"
+        );
+      } else if (button.id === "export-settled-btn") {
+        exportToExcel(
+          window.allCustomers.settled,
+          "Settled_Customers_Report.xlsx"
+        );
+      } else if (button.id === "export-backup-btn") {
+        try {
+          const backupData = {
+            version: "2.0.0",
+            exportedAt: new Date().toISOString(),
+            customers: window.allCustomers,
+          };
+          const dataStr = JSON.stringify(backupData, null, 2);
+          const blob = new Blob([dataStr], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `loan-manager-backup-${
+            new Date().toISOString().split("T")[0]
+          }.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          showToast(
+            "success",
+            "Export Successful",
+            "Your data has been downloaded."
+          );
+        } catch (e) {
+          showToast("error", "Export Failed", e.message);
+        }
+      } else if (button.id === "import-backup-btn") {
+        const fileInput = getEl("import-backup-input");
+        const file = fileInput.files[0];
+        if (!file) {
+          showToast(
+            "error",
+            "No File",
+            "Please choose a backup file to import."
+          );
+          return;
+        }
+        showConfirmation(
+          "Overwrite All Data?",
+          "Importing this file will permanently delete ALL your current customers and replacing them with the data from the backup. This cannot be undone. Are you sure you want to proceed?",
+          () => {
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+              try {
+                const backup = JSON.parse(event.target.result);
+                if (
+                  !backup.customers ||
+                  !backup.customers.active ||
+                  !backup.customers.settled
+                ) {
+                  throw new Error("Invalid backup file format.");
+                }
+                toggleButtonLoading(button, true, "Importing...");
+                const batch = db.batch();
+                const existingCustomers = await db
+                  .collection("customers")
+                  .where("owner", "==", currentUser.uid)
+                  .get();
+                existingCustomers.docs.forEach((doc) =>
+                  batch.delete(doc.ref)
+                );
+                [
+                  ...backup.customers.active,
+                  ...backup.customers.settled,
+                ].forEach((cust) => {
+                  const newDocRef = db.collection("customers").doc();
+                  const newCustData = {
+                    ...cust,
+                    owner: currentUser.uid,
+                    createdAt: new Date(),
+                  };
+                  delete newCustData.id;
+                  batch.set(newDocRef, newCustData);
+                });
+                await batch.commit();
+                showToast(
+                  "success",
+                  "Import Complete",
+                  "Your data has been restored. Refreshing..."
+                );
+                await loadAndRenderAll();
+              } catch (e) {
+                showToast("error", "Import Failed", e.message);
+              } finally {
+                toggleButtonLoading(button, false);
+              }
+            };
+            reader.readAsText(file);
+          }
+        );
       }
     });
 
@@ -3414,9 +3470,10 @@ const toggleButtonLoading = (btn, isLoading, text = "Loading...") => {
             typeof loanGivenDate === "string"
               ? parseDateFlexible(loanGivenDate)
               : loanGivenDate;
+          const lgdStr = formatForInput({ id: "any" }, lgdDate);
 
           const totalRepayable =
-            p + calculateTotalInterest(p, r, lgdDate, endDate);
+            p + calculateTotalInterest(p, r, lgdStr, endDate);
 
           const customAmtInput = getEl("new-loan-custom-installment-amount");
           let chosenN = nBase;
