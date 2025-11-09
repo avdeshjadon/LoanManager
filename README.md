@@ -12,13 +12,6 @@ The application moves beyond simple record-keeping, offering an interactive dash
 
 ---
 
-## 🚀 Live Application
-
-Experience the full functionality of the application hosted on Vercel:
-**[https://loan-manager-main.vercel.app/](https://loan-manager-nine.vercel.app/)**
-
----
-
 ## ✨ Core Features & Functionality
 
 This application is packed with features designed to provide a complete loan management experience.
@@ -154,4 +147,4 @@ For more details, please see the `LICENSE` file.
 
 ---
 
-Built with ❤️ by **Avdesh Jadon** and **Sachin Yadav**
+Built with ❤️ by **Avdesh Jadon** ([@avdeshjadon](https://github.com/avdeshjadon)) and Supported By **Sachin Yadav** ([@Sachin23991](https://github.com/Sachin23991))

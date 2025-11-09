@@ -68,6 +68,166 @@
         color: #555;
         font-size: 1.1rem;
       }
+
+      .modal-content.large {
+        max-width: 1000px;
+      }
+      .loan-mop-badge {
+        background-color: var(--info, #007bff);
+        color: #fff;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        margin-left: 8px;
+        text-transform: capitalize;
+      }
+
+      /* NEW: Today's total summary styles */
+      .today-total-box {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: linear-gradient(
+          90deg,
+          rgba(255, 249, 230, 1) 0%,
+          rgba(255, 243, 230, 1) 100%
+        );
+        border: 1px solid rgba(255, 200, 100, 0.25);
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        gap: 12px;
+      }
+      .today-total-left {
+        display: flex;
+        flex-direction: column;
+      }
+      .today-total-label {
+        font-weight: 700;
+        color: var(--text-primary, #1a202c);
+        font-size: 0.98rem;
+      }
+      .today-total-sub {
+        font-size: 0.85rem;
+        color: var(--text-muted, #555);
+        margin-top: 4px;
+      }
+      .today-total-amount {
+        font-weight: 800;
+        font-size: 1.1rem;
+        color: var(--success, #0f5132);
+      }
+
+      /* NEW: Monthly Loan Badge Style */
+      .finance-status-badge.monthly-loan {
+        background-color: var(--warning, #ffc107);
+        color: var(--text-primary, #333);
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        margin-left: 5px;
+      }
+
+      /* NEW: Loan Type Selection */
+      #loan-type-selection {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem 1rem;
+        gap: 1.5rem;
+      }
+      #loan-type-selection h4 {
+        margin: 0;
+        color: var(--text-primary);
+        font-weight: 600;
+        font-size: 1.2rem;
+      }
+      .loan-type-selector-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+        width: 100%;
+      }
+      .loan-type-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background-color: var(--background-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 2rem 1rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-align: center;
+      }
+      .loan-type-btn:hover {
+        border-color: var(--primary);
+        background-color: var(--background-primary);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        transform: translateY(-2px);
+      }
+      .loan-type-btn i {
+        font-size: 2rem;
+        color: var(--primary);
+        margin-bottom: 1rem;
+      }
+      .loan-type-btn strong {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+      .loan-type-btn p {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        margin: 0.25rem 0 0 0;
+      }
+
+      /* NEW: Monthly Payment Modal */
+      #monthly-payment-body {
+        display: none; /* Hidden by default */
+        text-align: center;
+      }
+      .payment-breakdown {
+        display: flex;
+        justify-content: space-around;
+        background-color: var(--background-secondary);
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+      }
+      .payment-breakdown-item {
+        display: flex;
+        flex-direction: column;
+      }
+      .payment-breakdown-item span {
+        font-size: 0.9rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        font-weight: 500;
+      }
+      .payment-breakdown-item strong {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--text-primary);
+      }
+      .monthly-payment-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 1rem;
+      }
+      .monthly-payment-actions .btn {
+        height: auto;
+        padding: 12px 16px;
+        font-size: 1rem;
+        font-weight: 600;
+      }
+      .monthly-payment-actions .btn .btn-subtext {
+        display: block;
+        font-size: 0.85rem;
+        font-weight: 400;
+        opacity: 0.8;
+      }
     </style>
   </head>
   <body>
@@ -234,6 +394,10 @@
               class="loan-frequency-badge"
               id="details-modal-frequency"
             ></span>
+            <span
+              class="loan-mop-badge"
+              id="details-modal-loan-mop"
+            ></span>
             <div
               id="loan-switcher-container"
               class="custom-select-wrapper hidden"
@@ -273,8 +437,25 @@
           <button class="modal-close">&times;</button>
         </div>
         <div class="modal-body">
-          <form id="customer-form">
+          <div id="loan-type-selection">
+            <h4>Select Loan Type</h4>
+            <div class="loan-type-selector-grid">
+              <button class="loan-type-btn" id="select-loan-type-normal">
+                <i class="fas fa-list-ol"></i>
+                <strong>Normal Loan</strong>
+                <p>Standard EMI loan with daily, weekly, or monthly payments.</p>
+              </button>
+              <button class="loan-type-btn" id="select-loan-type-monthly">
+                <i class="fas fa-calendar-day"></i>
+                <strong>Monthly Loan</strong>
+                <p>A single, one-month loan with one final payment.</p>
+              </button>
+            </div>
+          </div>
+
+          <form id="customer-form" class="hidden">
             <input type="hidden" id="customer-id" />
+            <input type="hidden" id="loan-term-type" value="normal" />
             <fieldset id="personal-info-fields">
               <legend>Personal Information</legend>
               <div class="form-row">
@@ -288,8 +469,8 @@
                   />
                 </div>
                 <div class="form-group">
-                  <label for="customer-father-name">Father's Name</label
-                  ><input
+                  <label for="customer-father-name">Father's Name</label>
+                  <input
                     type="text"
                     id="customer-father-name"
                     class="form-control"
@@ -310,9 +491,19 @@
                   />
                 </div>
               </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="customer-dob">Date of Birth</label>
+                  <input
+                    type="date"
+                    id="customer-dob"
+                    class="form-control"
+                  />
+                </div>
+              </div>
               <div class="form-group">
-                <label for="customer-address">Full Address</label
-                ><textarea
+                <label for="customer-address">Full Address</label>
+                <textarea
                   id="customer-address"
                   class="form-control"
                   rows="3"
@@ -326,20 +517,48 @@
               </p>
               <div class="form-row">
                 <div class="form-group">
-                  <label for="customer-aadhar-file">Aadhar Card</label>
+                  <label for="customer-aadhar-file-front"
+                    >Aadhar Card (Front)</label
+                  >
                   <div class="file-input-wrapper">
                     <input
                       type="file"
-                      id="customer-aadhar-file"
+                      id="customer-aadhar-file-front"
                       class="file-input"
                       accept="application/pdf,image/*"
                     />
-                    <label for="customer-aadhar-file" class="file-input-label">
+                    <label
+                      for="customer-aadhar-file-front"
+                      class="file-input-label"
+                    >
                       <i class="fas fa-cloud-upload-alt"></i>
                       <span>Choose a file...</span>
                     </label>
                   </div>
                 </div>
+                <div class="form-group">
+                  <label for="customer-aadhar-file-back"
+                    >Aadhar Card (Back)</label
+                  >
+                  <div class="file-input-wrapper">
+                    <input
+                      type="file"
+                      id="customer-aadhar-file-back"
+                      class="file-input"
+                      accept="application/pdf,image/*"
+                    />
+                    <label
+                      for="customer-aadhar-file-back"
+                      class="file-input-label"
+                    >
+                      <i class="fas fa-cloud-upload-alt"></i>
+                      <span>Choose a file...</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-row">
                 <div class="form-group">
                   <label for="customer-pan-file">PAN Card</label>
                   <div class="file-input-wrapper">
@@ -350,6 +569,21 @@
                       accept="application/pdf,image/*"
                     />
                     <label for="customer-pan-file" class="file-input-label">
+                      <i class="fas fa-cloud-upload-alt"></i>
+                      <span>Choose a file...</span>
+                    </label>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="customer-pic-file">Client's Picture</label>
+                  <div class="file-input-wrapper">
+                    <input
+                      type="file"
+                      id="customer-pic-file"
+                      class="file-input"
+                      accept="image/*"
+                    />
+                    <label for="customer-pic-file" class="file-input-label">
                       <i class="fas fa-cloud-upload-alt"></i>
                       <span>Choose a file...</span>
                     </label>
@@ -385,21 +619,6 @@
               </div>
               <div class="form-row">
                 <div class="form-group">
-                  <label for="customer-pic-file">Client's Picture</label>
-                  <div class="file-input-wrapper">
-                    <input
-                      type="file"
-                      id="customer-pic-file"
-                      class="file-input"
-                      accept="image/*"
-                    />
-                    <label for="customer-pic-file" class="file-input-label">
-                      <i class="fas fa-cloud-upload-alt"></i>
-                      <span>Choose a file...</span>
-                    </label>
-                  </div>
-                </div>
-                <div class="form-group">
                   <label for="customer-bank-file"
                     >Bank Details (e.g., Cheque)</label
                   >
@@ -417,10 +636,49 @@
                   </div>
                 </div>
               </div>
+
+              <div class="form-row" style="gap: 1rem; margin-top: 0.75rem">
+                <div class="form-group" style="flex: 1">
+                  <label for="customer-bank-name">Bank Name</label>
+                  <input
+                    type="text"
+                    id="customer-bank-name"
+                    class="form-control"
+                    placeholder="e.g., State Bank of India"
+                  />
+                </div>
+                <div class="form-group" style="flex: 1">
+                  <label for="customer-account-number">Account Number</label>
+                  <input
+                    type="text"
+                    id="customer-account-number"
+                    class="form-control"
+                    placeholder="Account Number"
+                  />
+                </div>
+                <div class="form-group" style="flex: 1">
+                  <label for="customer-ifsc">IFSC Code</label>
+                  <input
+                    type="text"
+                    id="customer-ifsc"
+                    class="form-control"
+                    placeholder="e.g., SBIN0000001"
+                  />
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-top: 0.5rem">
+                <label for="loan-mop">Mode of Payment (Loan Given)</label>
+                <select id="loan-mop" class="form-control" required>
+                  <option value="Cash">Cash</option>
+                  <option value="UPI">UPI</option>
+                  <option value="Internet Banking">Internet Banking</option>
+                </select>
+              </div>
             </fieldset>
             <div id="loan-details-fields">
               <fieldset>
-                <legend>Loan Details (Simple Interest)</legend>
+                <legend>Loan Details</legend>
                 <div class="form-group">
                   <label for="principal-amount">Principal Loan Amount (₹)</label
                   ><input
@@ -445,7 +703,7 @@
                       placeholder="e.g. 10 for 10%"
                     />
                   </div>
-                  <div class="form-group">
+                  <div class="form-group" id="collection-frequency-group">
                     <label for="collection-frequency"
                       >Collection Frequency</label
                     >
@@ -461,17 +719,18 @@
                   </div>
                 </div>
                 <div class="form-row">
-                  <div class="form-group">
+                  <div class="form-group" id="first-collection-date-group">
                     <label for="first-collection-date"
                       >First Collection Date</label
-                    ><input
+                    >
+                    <input
                       type="date"
                       id="first-collection-date"
                       class="form-control"
                       required
                     />
                   </div>
-                  <div class="form-group">
+                  <div class="form-group" id="loan-end-date-group">
                     <label for="loan-end-date">Loan End Date</label>
                     <input
                       type="date"
@@ -481,6 +740,18 @@
                     />
                   </div>
                 </div>
+                <div class="form-row" style="margin-top: 0.5rem">
+                  <div class="form-group" style="width: 100%">
+                    <label for="loan-given-date">Loan Given Date</label>
+                    <input
+                      type="date"
+                      id="loan-given-date"
+                      class="form-control"
+                      required
+                    />
+                  </div>
+                </div>
+
                 <div
                   id="installment-preview"
                   class="installment-preview hidden"
@@ -541,39 +812,88 @@
               </div>
             </div>
 
-            <div class="form-group" style="margin-top: 1.5rem">
-              <label for="payment-amount">Enter Amount to Pay</label>
-              <div class="input-group-payment">
-                <span class="input-group-icon">₹</span>
-                <input
-                  type="number"
-                  id="payment-amount"
-                  class="form-control form-control-lg"
-                  required
-                  step="0.01"
-                  min="0"
-                  placeholder="0.00"
-                />
+            <div id="monthly-payment-body">
+              <div class="payment-breakdown">
+                <div class="payment-breakdown-item">
+                  <span>Principal</span>
+                  <strong id="monthly-payment-principal">₹0</strong>
+                </div>
+                <div class="payment-breakdown-item">
+                  <span>Interest</span>
+                  <strong id="monthly-payment-interest">₹0</strong>
+                </div>
+              </div>
+              <div class="monthly-payment-actions">
+                <button
+                  type="button"
+                  class="btn btn-outline"
+                  id="pay-interest-only-btn"
+                >
+                  Pay Interest Only
+                  <span
+                    class="btn-subtext"
+                    id="pay-interest-only-btn-subtext"
+                  ></span>
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-success"
+                  id="pay-full-monthly-btn"
+                >
+                  Pay Full Amount & Settle
+                  <span
+                    class="btn-subtext"
+                    id="pay-full-monthly-btn-subtext"
+                  ></span>
+                </button>
               </div>
             </div>
 
-            <div class="payment-quick-actions">
-              <button
-                type="button"
-                class="btn btn-outline btn-sm"
-                id="pay-full-btn"
-              >
-                Pay Full Amount
-              </button>
-            </div>
+            <div id="normal-payment-body">
+              <div class="form-group" style="margin-top: 1.5rem">
+                <label for="payment-amount">Enter Amount to Pay</label>
+                <div class="input-group-payment">
+                  <span class="input-group-icon">₹</span>
+                  <input
+                    type="number"
+                    id="payment-amount"
+                    class="form-control form-control-lg"
+                    required
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
 
-            <div class="payment-pending-display">
-              <span class="payment-pending-label">Remaining Balance:</span>
-              <strong class="payment-pending-value">₹0.00</strong>
+              <div class="payment-quick-actions">
+                <button
+                  type="button"
+                  class="btn btn-outline btn-sm"
+                  id="pay-full-btn"
+                >
+                  Pay Full Amount
+                </button>
+              </div>
+
+              <div class="form-group" style="margin-top: 1.5rem">
+                <label for="payment-mop">Mode of Payment</label>
+                <select id="payment-mop" class="form-control" required>
+                  <option value="" disabled selected>Select Mode...</option>
+                  <option value="Cash">Cash</option>
+                  <option value="UPI">UPI</option>
+                  <option value="Internet Banking">Internet Banking</option>
+                </select>
+              </div>
+
+              <div class="payment-pending-display">
+                <span class="payment-pending-label">Remaining Balance:</span>
+                <strong class="payment-pending-value">₹0.00</strong>
+              </div>
             </div>
           </form>
         </div>
-        <div class="modal-footer">
+        <div class="modal-footer" id="normal-payment-footer">
           <button type="button" class="btn btn-outline" data-close-modal>
             Cancel
           </button>
@@ -585,6 +905,11 @@
           >
             <span class="loading-spinner hidden"></span>
             <span>Save Payment</span>
+          </button>
+        </div>
+        <div class="modal-footer hidden" id="monthly-payment-footer">
+          <button type="button" class="btn btn-outline" data-close-modal>
+            Close
           </button>
         </div>
       </div>
@@ -653,6 +978,25 @@
                 />
               </div>
             </div>
+            <div class="form-row">
+              <div class="form-group" style="width: 100%">
+                <label for="new-loan-given-date">Loan Given Date</label>
+                <input
+                  type="date"
+                  id="new-loan-given-date"
+                  class="form-control"
+                  required
+                />
+              </div>
+            </div>
+            <div class="form-group" style="margin-top: 0.5rem">
+              <label for="new-loan-mop">Mode of Payment (Loan Given)</label>
+              <select id="new-loan-mop" class="form-control" required>
+                <option value="Cash">Cash</option>
+                <option value="UPI">UPI</option>
+                <option value="Internet Banking">Internet Banking</option>
+              </select>
+            </div>
             <div
               id="new-loan-installment-preview"
               class="installment-preview hidden"
@@ -704,6 +1048,43 @@
       </div>
     </div>
 
+    <div class="modal" id="reset-password-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 class="modal-title">Reset Password</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form id="reset-password-form">
+            <div class="form-group">
+              <label for="reset-email">Email Address</label>
+              <input
+                type="email"
+                id="reset-email"
+                class="form-control"
+                placeholder="you@example.com"
+                required
+              />
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" data-close-modal>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="btn btn-primary"
+            id="reset-password-submit"
+            form="reset-password-form"
+          >
+            <span class="loading-spinner hidden"></span>
+            <span>Send Reset Link</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div class="modal" id="theme-modal">
       <div class="modal-content">
         <div class="modal-header">
@@ -740,7 +1121,14 @@
           <button type="button" class="btn btn-outline" data-close-modal>
             Cancel
           </button>
-          <button type="button" class="btn btn-success" id="settle-confirm-btn">
+          <button type="button" class="btn btn-danger" id="settle-all-btn">
+            Settle All
+          </button>
+          <button
+            type="button"
+            class="btn btn-success"
+            id="settle-confirm-btn"
+          >
             Settle Selected
           </button>
         </div>
@@ -840,7 +1228,14 @@
       })();
     </script>
 
-    <script src="script.js"></script>
+    <script src="core.js"></script>
+    
+    <script src="utils.js"></script>
+    
+    <script src="app.js"></script>
+    
+    <script src="main.js"></script>
+    
     <script src="excel.js"></script>
     <script src="graph.js"></script>
     <script src="pdf-generator.js"></script>

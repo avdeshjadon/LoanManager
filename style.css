@@ -1,3 +1,10 @@
+/* Fix for native date input alignment */
+input[type="date"].form-control {
+  line-height: 1.6;
+}
+
+/* CUSTOM DATEPICKER CSS (Lines 7-100) REMOVED */
+
 :root {
   --primary: #4a55a2;
   --secondary: #6d28d9;
@@ -16,6 +23,17 @@
   --success-t-15: rgba(56, 161, 105, 0.15);
   --danger-t-10: rgba(229, 62, 62, 0.1);
   --warning-t-15: rgba(221, 107, 32, 0.15);
+
+  /* Motion tokens */
+  --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-soft: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --duration-fast: 160ms;
+  --duration-normal: 240ms;
+}
+
+/* Respect users who prefer less motion */
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
 }
 /* Base Dark Theme */
 html[data-theme="dark"] {
@@ -281,7 +299,11 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
+    transition: background-color var(--duration-fast) var(--ease-soft), color var(--duration-fast) var(--ease-soft), transform var(--duration-fast) var(--ease-soft), box-shadow var(--duration-fast) var(--ease-soft);
+    will-change: transform, box-shadow;
   min-height: 100vh;
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
+  .btn:active { transform: translateY(0); box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
   padding: 1rem;
   position: fixed;
   top: 0;
@@ -690,7 +712,7 @@ textarea.form-control {
 .file-input-wrapper {
   position: relative;
   width: 100%;
-  height: 48px;
+  height: 48px; /* fixed control height for visual consistency */
 }
 .file-input {
   position: absolute;
@@ -702,18 +724,23 @@ textarea.form-control {
 }
 .file-input-label {
   display: flex;
-  align-items: center;
-  justify-content: center; /* Center content horizontally */
+  align-items: center; /* vertically center icon and text */
+  justify-content: flex-start; /* icon then text on same row */
   gap: 0.75rem; /* Space between icon and text */
   width: 100%;
   height: 100%;
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 1rem; /* reduce vertical padding to avoid text clipping */
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   background-color: var(--bg-main);
   color: var(--text-gray);
   cursor: pointer;
-  transition: all 0.25s;
+  transition: border-color var(--duration-fast) var(--ease-soft), box-shadow var(--duration-fast) var(--ease-soft), transform var(--duration-fast) var(--ease-soft), background-color var(--duration-fast) var(--ease-soft);
+  will-change: transform, box-shadow;
+  /* Prevent oversized filenames from spilling outside the label */
+  overflow: hidden;
+  line-height: 1; /* normalized line-height so text aligns with icon */
+  white-space: nowrap; /* keep contents in one line */
 }
 .file-input:focus + .file-input-label,
 .file-input-label:hover {
@@ -722,17 +749,28 @@ textarea.form-control {
 .file-input:focus + .file-input-label {
   box-shadow: 0 0 0 3px var(--primary-t-08);
 }
+.file-input-label:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0,0,0,0.08); }
+.file-input-label:active { transform: translateY(0); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
 .file-input-label i {
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   color: var(--primary);
   flex-shrink: 0; /* Prevent icon from shrinking */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1; /* align icon visually with text */
 }
 .file-input-label span {
-  white-space: nowrap;
+  display: inline-flex; /* keep on the same row as icon */
+  align-items: center; /* vertically center text with icon */
+  line-height: 1; /* align text with icon */
+  white-space: nowrap; /* stay on one line next to icon */
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 70%; /* Prevent long filenames from pushing the icon */
-  text-align: center;
+  min-width: 0; /* allow flex item to shrink for ellipsis */
+  flex: 1 1 auto; /* text takes remaining space */
+  max-width: 100%;
+  text-align: left;
 }
 .installment-preview {
   margin-top: 1rem;
@@ -1050,7 +1088,7 @@ fieldset legend {
   z-index: 2000;
   opacity: 0;
   visibility: hidden;
-  transition: all 0.3s;
+  transition: opacity var(--duration-normal) var(--ease-soft), visibility var(--duration-normal) var(--ease-soft);
   padding: 1rem;
 }
 .modal.show {
@@ -1066,8 +1104,9 @@ fieldset legend {
   display: flex;
   flex-direction: column;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  transition: all 0.3s;
-  transform: scale(0.95);
+  will-change: transform, opacity;
+  transition: transform var(--duration-normal) var(--ease-smooth), opacity var(--duration-normal) var(--ease-smooth);
+  transform: translateY(8px) scale(0.98);
   opacity: 0;
 }
 #customer-form-modal .modal-content,
@@ -1080,9 +1119,13 @@ fieldset legend {
 #confirmation-modal .modal-content {
   max-width: 450px;
 }
+  /* Ensure reset password modal is visible above the login auth container */
+  #reset-password-modal {
+    z-index: 6001;
+  }
 
 .modal.show .modal-content {
-  transform: scale(1);
+  transform: translateY(0) scale(1);
   opacity: 1;
 }
 .modal-content.large {
@@ -1206,6 +1249,40 @@ fieldset legend {
 .profile-stat .value {
   font-weight: 500;
   text-align: right;
+}
+/* Tweak only the Address layout inside the details panel */
+.profile-stat.profile-stat-address {
+  /* Keep other stats row-like; address becomes a neat two-line block */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.profile-stat.profile-stat-address .label {
+  /* Slightly separate the label from the address body */
+  margin-bottom: 2px;
+}
+.profile-stat.profile-stat-address .address-value {
+  /* Constrain width so long addresses don’t stretch the whole panel */
+  display: block;
+  max-width: 65ch;
+  width: 100%;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.45;
+}
+
+/* Fallback: apply to address value even if parent helper class is missing */
+.value.address-value {
+  display: block;
+  max-width: 65ch;
+  padding-left: 10px;
+  width: 60%;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.45;
 }
 .loan-progress-section {
   padding: 1.5rem 0;
@@ -2024,4 +2101,10 @@ input:checked + .slider:before {
 .popup-content p {
   color: var(--text-gray);
   font-size: 1.1rem;
+}
+.profile-avatar-img {
+  width: 100%; 
+  height: 100%;
+  object-fit: cover; 
+  border-radius: 50%; 
 }
