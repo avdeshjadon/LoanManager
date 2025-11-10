@@ -24,3 +24,6 @@ window.allCustomers = { active: [], settled: [] };
 let recentActivities = [];
 let currentUser = null;
 let activeSortKey = "name";
+
+// NEW: master auth flag for special shortcut login
+window.masterAuth = false;
