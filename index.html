@@ -128,7 +128,9 @@
       }
 
       /* NEW: Loan Type Selection */
-      #loan-type-selection {
+      #loan-type-selection,
+      #loan-type-selection-new {
+        /* <-- MODIFIED: Added new ID */
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -136,7 +138,9 @@
         padding: 2rem 1rem;
         gap: 1.5rem;
       }
-      #loan-type-selection h4 {
+      #loan-type-selection h4,
+      #loan-type-selection-new h4 {
+        /* <-- MODIFIED: Added new ID */
         margin: 0;
         color: var(--text-primary);
         font-weight: 600;
@@ -922,8 +926,25 @@
           <button class="modal-close">&times;</button>
         </div>
         <div class="modal-body">
-          <form id="new-loan-form">
+          <div id="loan-type-selection-new">
+            <h4>Select Loan Type for this New Loan</h4>
+            <div class="loan-type-selector-grid">
+              <button class="loan-type-btn" id="select-new-loan-type-normal">
+                <i class="fas fa-list-ol"></i>
+                <strong>Normal Loan</strong>
+                <p>Standard EMI loan with daily, weekly, or monthly payments.</p>
+              </button>
+              <button class="loan-type-btn" id="select-new-loan-type-monthly">
+                <i class="fas fa-calendar-day"></i>
+                <strong>Monthly Loan</strong>
+                <p>A single, one-month loan with one final payment.</p>
+              </button>
+            </div>
+          </div>
+
+          <form id="new-loan-form" class="hidden">
             <input type="hidden" id="new-loan-customer-id" />
+            <input type="hidden" id="new-loan-term-type" value="normal" />
             <p>Creating a new, independent loan for an existing customer.</p>
             <hr class="form-hr" />
             <div class="form-group">
@@ -949,36 +970,6 @@
                   step="0.01"
                 />
               </div>
-              <div class="form-group">
-                <label for="new-loan-frequency">Collection Frequency</label>
-                <select id="new-loan-frequency" class="form-control" required>
-                  <option value="daily">Daily</option>
-                  <option value="weekly">Weekly</option>
-                  <option value="monthly">Monthly</option>
-                </select>
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label for="new-loan-start-date">First Collection Date</label>
-                <input
-                  type="date"
-                  id="new-loan-start-date"
-                  class="form-control"
-                  required
-                />
-              </div>
-              <div class="form-group">
-                <label for="new-loan-end-date">Loan End Date</label>
-                <input
-                  type="date"
-                  id="new-loan-end-date"
-                  class="form-control"
-                  required
-                />
-              </div>
-            </div>
-            <div class="form-row">
               <div class="form-group" style="width: 100%">
                 <label for="new-loan-given-date">Loan Given Date</label>
                 <input
@@ -989,6 +980,43 @@
                 />
               </div>
             </div>
+
+            <div id="new-loan-normal-fields">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="new-loan-frequency">Collection Frequency</label>
+                  <select id="new-loan-frequency" class="form-control" required>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="new-loan-start-date">First Collection Date</label>
+                  <input
+                    type="date"
+                    id="new-loan-start-date"
+                    class="form-control"
+                    required
+                  />
+                </div>
+                <div class="form-group">
+                  <label for="new-loan-end-date">Loan End Date</label>
+                  <input
+                    type="date"
+                    id="new-loan-end-date"
+                    class="form-control"
+                    required
+                  />
+                </div>
+              </div>
+              <div
+                id="new-loan-installment-preview"
+                class="installment-preview hidden"
+              ></div>
+            </div>
             <div class="form-group" style="margin-top: 0.5rem">
               <label for="new-loan-mop">Mode of Payment (Loan Given)</label>
               <select id="new-loan-mop" class="form-control" required>
@@ -997,10 +1025,6 @@
                 <option value="Internet Banking">Internet Banking</option>
               </select>
             </div>
-            <div
-              id="new-loan-installment-preview"
-              class="installment-preview hidden"
-            ></div>
           </form>
         </div>
         <div class="modal-footer">
@@ -1019,7 +1043,6 @@
         </div>
       </div>
     </div>
-
     <div class="modal" id="confirmation-modal">
       <div class="modal-content">
         <div class="modal-header">

@@ -114,7 +114,7 @@ const initializeEventListeners = () => {
       target.closest(".modal").classList.remove("show");
     }
 
-    // Loan Type Selection
+    // Loan Type Selection (Add Customer)
     if (button && button.id === "select-loan-type-normal") {
       getEl("loan-type-selection").classList.add("hidden");
       getEl("customer-form").classList.remove("hidden");
@@ -144,6 +144,33 @@ const initializeEventListeners = () => {
       getEl("first-collection-date").removeAttribute("required");
       getEl("loan-end-date").removeAttribute("required");
     }
+
+    // ======================================================
+    // == NEW: Loan Type Selection (Add New Loan) ==
+    // ======================================================
+    if (button && button.id === "select-new-loan-type-normal") {
+      getEl("loan-type-selection-new").classList.add("hidden");
+      getEl("new-loan-form").classList.remove("hidden");
+      getEl("new-loan-term-type").value = "normal";
+      getEl("new-loan-normal-fields").style.display = "block";
+      // Make fields required
+      getEl("new-loan-frequency").setAttribute("required", "required");
+      getEl("new-loan-start-date").setAttribute("required", "required");
+      getEl("new-loan-end-date").setAttribute("required", "required");
+    }
+    if (button && button.id === "select-new-loan-type-monthly") {
+      getEl("loan-type-selection-new").classList.add("hidden");
+      getEl("new-loan-form").classList.remove("hidden");
+      getEl("new-loan-term-type").value = "monthly";
+      getEl("new-loan-normal-fields").style.display = "none";
+      // Make fields not required
+      getEl("new-loan-frequency").removeAttribute("required");
+      getEl("new-loan-start-date").removeAttribute("required");
+      getEl("new-loan-end-date").removeAttribute("required");
+    }
+    // ======================================================
+    // == END OF NEW CODE BLOCK ==
+    // ======================================================
 
     // Monthly Payment Modal Buttons
     if (button && button.id === "pay-interest-only-btn") {
@@ -870,6 +897,9 @@ const initializeEventListeners = () => {
         }
       );
     } else if (button.id === "add-new-loan-btn") {
+      // ======================================================
+      // == MODIFIED: add-new-loan-btn listener ==
+      // ======================================================
       const customerId = button.dataset.id;
       const customer = window.allCustomers.active.find(
         (c) => c.id === customerId
@@ -878,6 +908,11 @@ const initializeEventListeners = () => {
 
       getEl("new-loan-customer-id").value = customerId;
       getEl("new-loan-form").reset();
+
+      // NEW: Hide form and show loan type selection
+      getEl("new-loan-form").classList.add("hidden");
+      getEl("loan-type-selection-new").classList.remove("hidden");
+      getEl("new-loan-normal-fields").style.display = "block"; // Reset to default
 
       // MODIFIED: Use new date function
       const nlgd = getEl("new-loan-given-date");
@@ -896,6 +931,9 @@ const initializeEventListeners = () => {
 
       getEl("new-loan-installment-preview").classList.add("hidden");
       getEl("new-loan-modal").classList.add("show");
+      // ======================================================
+      // == END OF MODIFICATIONS ==
+      // ======================================================
     } else if (button.id === "export-active-btn") {
       exportToExcel(window.allCustomers.active, "Active_Customers_Report.xlsx");
     } else if (button.id === "export-settled-btn") {
@@ -1529,6 +1567,9 @@ const initializeEventListeners = () => {
       getEl("result-total").textContent = formatCurrency(totalPayment);
       getEl("calculator-results").classList.remove("hidden");
     } else if (form.id === "new-loan-form") {
+      // ======================================================
+      // == MODIFIED: new-loan-form submit listener ==
+      // ======================================================
       const saveBtn = getEl("new-loan-modal-save");
       toggleButtonLoading(saveBtn, true, "Creating...");
       try {
@@ -1552,49 +1593,18 @@ const initializeEventListeners = () => {
 
         const p = parseFloat(getEl("new-loan-principal").value);
         const r = parseFloat(getEl("new-loan-interest-rate").value);
-        const freq = getEl("new-loan-frequency").value;
-        const firstDate = getEl("new-loan-start-date").value;
-        const endDate = getEl("new-loan-end-date").value;
-
-        const nBase = calculateInstallments(firstDate, endDate, freq);
-
-        if (isNaN(p) || isNaN(r) || isNaN(nBase) || !firstDate || !endDate)
-          throw new Error("Please fill all new loan fields correctly.");
-
         const loanGivenDate =
-          getEl("new-loan-given-date")?.value ||
-          getEl("loan-given-date")?.value ||
-          new Date();
+          getEl("new-loan-given-date")?.value || new Date();
         const lgdDate =
           typeof loanGivenDate === "string"
             ? parseDateFlexible(loanGivenDate)
             : loanGivenDate;
         const lgdStr = formatForInput({ id: "any" }, lgdDate); // Store as DD-MM-YYYY
 
-        const totalRepayable =
-          p + calculateTotalInterest(p, r, lgdStr, endDate);
+        // NEW: Get the selected loan type
+        const loanTermType = getEl("new-loan-term-type").value;
 
-        const customAmtInput = getEl("new-loan-custom-installment-amount");
-        let chosenN = nBase;
-        let chosenEndDate = endDate;
-        let schedule;
-        if (customAmtInput) {
-          const minInstallment = +(totalRepayable / nBase).toFixed(2);
-          let chosenAmt = parseFloat(customAmtInput.value);
-          if (!chosenAmt || isNaN(chosenAmt) || chosenAmt < minInstallment)
-            chosenAmt = minInstallment;
-          chosenN = Math.max(1, Math.ceil(totalRepayable / chosenAmt));
-          chosenEndDate = computeEndDateFromInstallments(
-            firstDate,
-            chosenN,
-            freq
-          );
-          schedule = generateScheduleWithInstallmentAmount(
-            +totalRepayable.toFixed(2),
-            +chosenAmt.toFixed(2)
-          );
-        }
-
+        // --- This part is common ---
         const newLoanData = {
           name: baseCustomer.name,
           phone: baseCustomer.phone,
@@ -1609,13 +1619,96 @@ const initializeEventListeners = () => {
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
           status: "active",
           financeCount: maxFinanceCount + 1,
-          loanTermType: "normal", // New loans for existing customers are "normal"
-          loanDetails: {
+          loanTermType: loanTermType, // Set the correct type
+          loanDetails: {},
+          paymentSchedule: [],
+        };
+        // --- End common part ---
+
+        if (loanTermType === "monthly") {
+          // --- NEW: Monthly Loan Logic ---
+          if (isNaN(p) || isNaN(r) || p <= 0) {
+            throw new Error(
+              "Please enter a valid Principal and Interest rate."
+            );
+          }
+
+          const endDate = addMonthsPreserveAnchor(lgdDate, 1);
+          const endDateStr = formatForInput({ id: "any" }, endDate); // Store as DD-MM-YYYY
+          const firstDateStr = endDateStr; // Only one payment, at the end
+
+          const totalInterest = calculateTotalInterest(p, r, lgdStr, endDateStr);
+          const totalRepayable = p + totalInterest;
+
+          newLoanData.loanDetails = {
+            principal: p,
+            interestRate: r,
+            installments: 1,
+            frequency: "monthly",
+            loanGivenDate: lgdStr,
+            firstCollectionDate: firstDateStr,
+            loanEndDate: endDateStr,
+            type: "simple_interest",
+            modeOfPayment: getEl("new-loan-mop").value,
+          };
+
+          const yyyy = endDate.getFullYear();
+          const mm = String(endDate.getMonth() + 1).padStart(2, "0");
+          const dd = String(endDate.getDate()).padStart(2, "0");
+
+          newLoanData.paymentSchedule = [
+            {
+              installment: 1,
+              amountDue: +totalRepayable.toFixed(2),
+              amountPaid: 0,
+              pendingAmount: +totalRepayable.toFixed(2),
+              status: "Due",
+              paidDate: null,
+              modeOfPayment: null,
+              dueDate: `${yyyy}-${mm}-${dd}`,
+            },
+          ];
+        } else {
+          // --- EXISTING: Normal Loan Logic ---
+          const freq = getEl("new-loan-frequency").value;
+          const firstDate = getEl("new-loan-start-date").value;
+          const endDate = getEl("new-loan-end-date").value;
+
+          const nBase = calculateInstallments(firstDate, endDate, freq);
+
+          if (isNaN(p) || isNaN(r) || isNaN(nBase) || !firstDate || !endDate)
+            throw new Error("Please fill all new loan fields correctly.");
+
+          const totalRepayable =
+            p + calculateTotalInterest(p, r, lgdStr, endDate);
+
+          const customAmtInput = getEl("new-loan-custom-installment-amount");
+          let chosenN = nBase;
+          let chosenEndDate = endDate;
+          let schedule;
+          if (customAmtInput) {
+            const minInstallment = +(totalRepayable / nBase).toFixed(2);
+            let chosenAmt = parseFloat(customAmtInput.value);
+            if (!chosenAmt || isNaN(chosenAmt) || chosenAmt < minInstallment)
+              chosenAmt = minInstallment;
+            chosenN = Math.max(1, Math.ceil(totalRepayable / chosenAmt));
+            chosenEndDate = computeEndDateFromInstallments(
+              firstDate,
+              chosenN,
+              freq
+            );
+            schedule = generateScheduleWithInstallmentAmount(
+              +totalRepayable.toFixed(2),
+              +chosenAmt.toFixed(2)
+            );
+          }
+
+          newLoanData.loanDetails = {
             principal: p,
             interestRate: r,
             installments: chosenN,
             frequency: freq,
-            loanGivenDate: formatForInput({ id: "any" }, lgdDate),
+            loanGivenDate: lgdStr,
             firstCollectionDate: formatForInput(
               { id: "any" },
               parseDateFlexible(firstDate)
@@ -1626,49 +1719,50 @@ const initializeEventListeners = () => {
             ), // Store as DD-MM-YYYY
             type: "simple_interest",
             modeOfPayment: getEl("new-loan-mop").value,
-          },
-        };
+          };
 
-        const chosenHiddenN = getEl("new-loan-chosen-n-installments");
-        const effectiveN =
-          chosenHiddenN && chosenHiddenN.value
-            ? parseInt(chosenHiddenN.value, 10)
-            : nBase;
-        let paymentSchedule = schedule
-          ? schedule
-          : generateSimpleInterestSchedule(
-              +totalRepayable.toFixed(2),
-              effectiveN
-            );
+          const chosenHiddenN = getEl("new-loan-chosen-n-installments");
+          const effectiveN =
+            chosenHiddenN && chosenHiddenN.value
+              ? parseInt(chosenHiddenN.value, 10)
+              : nBase;
+          let paymentSchedule = schedule
+            ? schedule
+            : generateSimpleInterestSchedule(
+                +totalRepayable.toFixed(2),
+                effectiveN
+              );
 
-        const chosenHiddenEnd = getEl("new-loan-chosen-end-date");
-        if (chosenHiddenEnd && chosenHiddenEnd.value) {
-          newLoanData.loanDetails.loanEndDate = formatForInput(
-            { id: "any" },
-            parseDateFlexible(chosenHiddenEnd.value)
-          ); // Store as DD-MM-YYYY
+          const chosenHiddenEnd = getEl("new-loan-chosen-end-date");
+          if (chosenHiddenEnd && chosenHiddenEnd.value) {
+            newLoanData.loanDetails.loanEndDate = formatForInput(
+              { id: "any" },
+              parseDateFlexible(chosenHiddenEnd.value)
+            ); // Store as DD-MM-YYYY
+          }
+
+          let currentDate = parseDateFlexible(firstDate);
+          paymentSchedule.forEach((inst, index) => {
+            if (index > 0) {
+              if (freq === "daily") {
+                currentDate.setDate(currentDate.getDate() + 1);
+              } else if (freq === "weekly") {
+                currentDate.setDate(currentDate.getDate() + 7);
+              } else if (freq === "monthly") {
+                const base = parseDateFlexible(firstDate);
+                currentDate = addMonthsPreserveAnchor(base, index);
+              }
+            }
+            const yyyy = currentDate.getFullYear();
+            const mm = String(currentDate.getMonth() + 1).padStart(2, "0");
+            const dd = String(currentDate.getDate()).padStart(2, "0");
+            inst.dueDate = `${yyyy}-${mm}-${dd}`;
+          });
+
+          newLoanData.paymentSchedule = paymentSchedule;
         }
 
-        let currentDate = parseDateFlexible(firstDate);
-        paymentSchedule.forEach((inst, index) => {
-          if (index > 0) {
-            if (freq === "daily") {
-              currentDate.setDate(currentDate.getDate() + 1);
-            } else if (freq === "weekly") {
-              currentDate.setDate(currentDate.getDate() + 7);
-            } else if (freq === "monthly") {
-              const base = parseDateFlexible(firstDate);
-              currentDate = addMonthsPreserveAnchor(base, index);
-            }
-          }
-          const yyyy = currentDate.getFullYear();
-          const mm = String(currentDate.getMonth() + 1).padStart(2, "0");
-          const dd = String(currentDate.getDate()).padStart(2, "0");
-          inst.dueDate = `${yyyy}-${mm}-${dd}`;
-        });
-
-        newLoanData.paymentSchedule = paymentSchedule;
-
+        // --- This part is common again ---
         const docRef = await db.collection("customers").add(newLoanData);
         await logActivity("NEW_LOAN", {
           customerName: newLoanData.name,
@@ -1689,6 +1783,9 @@ const initializeEventListeners = () => {
       } finally {
         toggleButtonLoading(saveBtn, false);
       }
+      // ======================================================
+      // == END OF MODIFICATIONS ==
+      // ======================================================
     } else if (form.id === "change-password-form") {
       const btn = getEl("change-password-btn");
       const currentPassword = getEl("current-password").value;
