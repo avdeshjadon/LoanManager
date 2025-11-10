@@ -120,21 +120,6 @@ To get a local copy up and running, follow these simple steps.
 
 ---
 
-## 📂 Project File Structure
-
-```
-├── index.html            # Main HTML file, the entry point of the application
-├── style.css             # All CSS styles for layout, theme, and responsiveness
-├── script.js             # Core application logic, event listeners, Firebase integration
-├── graph.js              # Logic for rendering dashboard charts using Chart.js
-├── excel.js              # Contains the function for exporting data to Excel
-├── LICENSE               # The proprietary license for the project
-└── README.md             # This file
-```
-
-
----
-
 ## 📄 License
 
 This project is protected under a **Proprietary License**.
