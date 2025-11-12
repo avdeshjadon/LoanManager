@@ -2108,3 +2108,29 @@ input:checked + .slider:before {
   object-fit: cover; 
   border-radius: 50%; 
 }
+
+/* Make details modal wider to avoid horizontal scrolling */
+#customer-details-modal .modal-content {
+  max-width: 90%;
+  width: 90%;
+  box-sizing: border-box;
+  max-height: 92vh;
+  overflow: hidden; /* keep scrolling inside dedicated containers */
+}
+
+/* Ensure EMI table scrolls vertically inside modal without causing page scroll */
+#customer-details-modal .emi-table-container {
+  max-height: 56vh; /* large enough to show many rows but keep footer visible */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Small visual highlight animation used when auto-scrolling to a row */
+#customer-details-modal .emi-table tbody tr.auto-highlight {
+  animation: highlightRow 2s ease forwards;
+}
+@keyframes highlightRow {
+  0% { background-color: rgba(250, 215, 160, 0.45); }
+  80% { background-color: transparent; }
+  100% { background-color: transparent; }
+}

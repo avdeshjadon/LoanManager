@@ -1024,6 +1024,51 @@ const renderLoanDetails = (customerId) => {
       <td class="no-pdf">${actionButtons}</td>`;
     emiTableBody.appendChild(tr);
   });
+
+  // --- Auto-scroll to the most relevant installment (nextDue or first Due/Pending) ---
+  // Delay slightly so layout is settled and modal is visible
+  setTimeout(() => {
+    try {
+      const emiContainer = modalBody.querySelector(".emi-table-container");
+      const tbody = modalBody.querySelector("#emi-schedule-body-details");
+      if (!emiContainer || !tbody) return;
+
+      // Prefer the explicit nextDue computed earlier; fall back to first Due/Pending
+      const targetInstallment =
+        (nextDue && nextDue.installment) ||
+        schedule.find((p) => p.status === "Due" || p.status === "Pending")?.installment;
+
+      if (!targetInstallment) return;
+
+      // Find the row whose first cell equals the target installment number
+      const rows = Array.from(tbody.querySelectorAll("tr"));
+      const targetRow = rows.find((r) => {
+        const firstTd = r.querySelector("td");
+        return firstTd && String(firstTd.textContent).trim() === String(targetInstallment);
+      });
+
+      if (targetRow) {
+        // Center the target row within the emiContainer
+        const containerRect = emiContainer.getBoundingClientRect();
+        const rowRect = targetRow.getBoundingClientRect();
+        const offset = rowRect.top - containerRect.top - containerRect.height / 2 + rowRect.height / 2;
+        emiContainer.scrollTo({
+          top: emiContainer.scrollTop + offset,
+          behavior: "smooth",
+        });
+
+        // Add a temporary highlight class for visibility
+        targetRow.classList.add("auto-highlight");
+        // Remove highlight after animation ends (keeps DOM clean)
+        setTimeout(() => {
+          targetRow.classList.remove("auto-highlight");
+        }, 2000);
+      }
+    } catch (err) {
+      // non-fatal: if scrolling fails, ignore
+      console.warn("Auto-scroll to EMI row failed:", err);
+    }
+  }, 60);
 };
 
 const canEditLoanDetailsForCustomer = (customer) => {

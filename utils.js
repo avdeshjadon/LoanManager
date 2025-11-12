@@ -115,62 +115,69 @@ const formatForDateInput = (date) => {
   return `${year}-${month}-${day}`;
 };
 
-const openWhatsApp = async (customer) => {
+function openWhatsApp(customer) {
   if (!customer || (!customer.whatsapp && !customer.phone)) {
     alert("Customer's WhatsApp number is not available.");
     return;
   }
 
-  try {
-    // PDF generate karne ki koshish karega (optional)
-    await generateAndDownloadPDF(customer.id);
-  } catch (error) {
-    console.error("Failed to generate PDF before sending WhatsApp:", error);
-    alert("Could not generate the PDF, but you can still send the message.");
+  // format phone
+  let phone = (customer.whatsapp || customer.phone || "").replace(/\D/g, "");
+  if (phone.length === 10) phone = "91" + phone;
+
+  // safe helpers / fallbacks
+  const safeNumber = (v) => {
+    const n = Number(v || 0);
+    return isNaN(n) ? 0 : n;
+  };
+  const formatCurrencySafe = (amt) => {
+    try {
+      if (typeof formatCurrency === "function") return formatCurrency(amt);
+      const v = Number(amt || 0);
+      return `₹${v.toLocaleString("en-IN", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
+    } catch {
+      return `₹${(Number(amt) || 0).toFixed(2)}`;
+    }
+  };
+
+  const loanDetails = customer.loanDetails || {};
+  let totalInterest = 0;
+  if (typeof calculateTotalInterest === "function") {
+    try {
+      totalInterest = calculateTotalInterest(
+        safeNumber(loanDetails.principal),
+        safeNumber(loanDetails.interestRate),
+        loanDetails.loanGivenDate,
+        loanDetails.loanEndDate
+      );
+    } catch {
+      totalInterest = 0;
+    }
   }
 
-  // Phone number format karna
-  let phone = (customer.whatsapp || customer.phone).replace(/\D/g, "");
-  if (phone.length === 10) {
-    phone = "91" + phone;
-  }
-
-  // Zaroori values calculate karna
-  const { loanDetails, paymentSchedule } = customer;
-
-  const totalInterest = calculateTotalInterest(
-    loanDetails.principal,
-    loanDetails.interestRate,
-    loanDetails.loanGivenDate,
-    loanDetails.loanEndDate
-  );
-
-  const totalRepayable = loanDetails.principal + totalInterest;
-
-  // --- YEH AAPKA NAYA MESSAGE TEMPLATE HAI ---
+  const totalRepayable =
+    safeNumber(loanDetails.principal) + safeNumber(totalInterest);
 
   let message = `Dear Partner,\n\n`;
   message += `We are pleased to provide a summary of your outstanding balance with Global Finance Consultant as outlined below:\n\n`;
-
-  // Note: Humne values ko align karne ke liye spaces ka istemal kiya hai
-  message += `1. Total Principal Amount:   ${formatCurrency(
+  message += `1. Total Principal Amount:   ${formatCurrencySafe(
     loanDetails.principal
   )}\n`;
-  message += `2. Total Interest Amount:     ${formatCurrency(totalInterest)}\n`;
-  message += `3. Total Payable Amount:      ${formatCurrency(
-    totalRepayable
-  )}\n\n`;
-
+  message += `2. Total Interest Amount:     ${formatCurrencySafe(totalInterest)}\n`;
+  message += `3. Total Payable Amount:      ${formatCurrencySafe(totalRepayable)}\n\n`;
   message += `We kindly request that all payments be made in accordance with the agreed repayment schedule to avoid any late fees.\n\n`;
   message += `*A late fee of ₹50 per day will apply if payment is not made more than three days after the due date until the payment is received.*`;
-
-  // --- NAYA TEMPLATE YAHAN KHATAM HOTA HAI ---
 
   const whatsappUrl = `https://wa.me/${phone}?text=${encodeURIComponent(
     message
   )}`;
   window.open(whatsappUrl, "_blank");
-};
+}
+
+window.openWhatsApp = openWhatsApp;
 
 window.processProfitData = (allCusts) => {
   const data = [];
