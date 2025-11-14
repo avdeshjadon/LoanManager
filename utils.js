@@ -169,7 +169,9 @@ function openWhatsApp(customer) {
   message += `2. Total Interest Amount:     ${formatCurrencySafe(totalInterest)}\n`;
   message += `3. Total Payable Amount:      ${formatCurrencySafe(totalRepayable)}\n\n`;
   message += `We kindly request that all payments be made in accordance with the agreed repayment schedule to avoid any late fees.\n\n`;
-  message += `*A late fee of ₹50 per day will apply if payment is not made more than three days after the due date until the payment is received.*`;
+  message += `*A late fee of ₹50 per day will apply if payment is not made more than three days after the due date until the payment is received.*\n\n`;
+  message += `Best regards,\n`;
+  message += `Global Finance Consultant`;
 
   const whatsappUrl = `https://wa.me/${phone}?text=${encodeURIComponent(
     message
